@@ -6,12 +6,20 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // --- Types ---
 type Provider = 'gemini' | 'openai' | 'grok';
 
+interface ApiKeyEntry {
+    id: string;
+    key: string;
+    label: string;
+    isActive: boolean;
+    createdAt: number;
+}
+
 interface ApiSettings {
     provider: Provider;
     keys: {
-        gemini: string;
-        openai: string;
-        grok: string;
+        gemini: ApiKeyEntry[];
+        openai: ApiKeyEntry[];
+        grok: ApiKeyEntry[];
     };
     models: {
         gemini: string;
@@ -24,9 +32,11 @@ interface ApiSettings {
 const DEFAULT_SETTINGS: ApiSettings = {
     provider: 'gemini',
     keys: {
-        gemini: process.env.API_KEY || '', // Fallback to env if available
-        openai: '',
-        grok: ''
+        gemini: process.env.API_KEY 
+            ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }] 
+            : [],
+        openai: [],
+        grok: []
     },
     models: {
         gemini: 'gemini-3-pro-image-preview',
@@ -79,6 +89,12 @@ const urlToGenerativePart = async (url: string) => {
     };
 };
 
+// Mask API Key for display
+const maskKey = (key: string) => {
+    if (key.length <= 8) return '********';
+    return `${key.slice(0, 4)}...${key.slice(-4)}`;
+};
+
 // --- Components ---
 
 // Settings Modal Component
@@ -94,20 +110,21 @@ const SettingsModal = ({
     onSave: (newSettings: ApiSettings) => void; 
 }) => {
     const [localSettings, setLocalSettings] = useState<ApiSettings>(settings);
+    const [newKeyInput, setNewKeyInput] = useState('');
+    const [newKeyLabel, setNewKeyLabel] = useState('');
 
     // Sync local state when modal opens
     useEffect(() => {
-        if (isOpen) setLocalSettings(settings);
+        if (isOpen) {
+            setLocalSettings(settings);
+            setNewKeyInput('');
+            setNewKeyLabel('');
+        }
     }, [isOpen, settings]);
 
     if (!isOpen) return null;
 
-    const handleKeyChange = (provider: Provider, value: string) => {
-        setLocalSettings(prev => ({
-            ...prev,
-            keys: { ...prev.keys, [provider]: value }
-        }));
-    };
+    const currentProviderKeys = localSettings.keys[localSettings.provider];
 
     const handleModelChange = (provider: Provider, value: string) => {
         setLocalSettings(prev => ({
@@ -116,18 +133,71 @@ const SettingsModal = ({
         }));
     };
 
+    const handleAddKey = () => {
+        if (!newKeyInput.trim()) return;
+        
+        const newEntry: ApiKeyEntry = {
+            id: crypto.randomUUID(),
+            key: newKeyInput.trim(),
+            label: newKeyLabel.trim() || `Key ${currentProviderKeys.length + 1}`,
+            isActive: currentProviderKeys.length === 0, // Auto activate if it's the first key
+            createdAt: Date.now()
+        };
+
+        setLocalSettings(prev => ({
+            ...prev,
+            keys: {
+                ...prev.keys,
+                [prev.provider]: [...prev.keys[prev.provider], newEntry]
+            }
+        }));
+
+        setNewKeyInput('');
+        setNewKeyLabel('');
+    };
+
+    const handleDeleteKey = (id: string) => {
+        setLocalSettings(prev => {
+            const updatedKeys = prev.keys[prev.provider].filter(k => k.id !== id);
+            // If we deleted the active key, make the first one active (if exists)
+            if (updatedKeys.length > 0 && !updatedKeys.some(k => k.isActive)) {
+                updatedKeys[0].isActive = true;
+            }
+            return {
+                ...prev,
+                keys: {
+                    ...prev.keys,
+                    [prev.provider]: updatedKeys
+                }
+            };
+        });
+    };
+
+    const handleSetActiveKey = (id: string) => {
+        setLocalSettings(prev => ({
+            ...prev,
+            keys: {
+                ...prev.keys,
+                [prev.provider]: prev.keys[prev.provider].map(k => ({
+                    ...k,
+                    isActive: k.id === id
+                }))
+            }
+        }));
+    };
+
     return (
         <div className="modal-overlay">
             <div className="modal-content">
                 <div className="modal-header">
-                    <h2>⚙️ Cài đặt AI & API Key</h2>
+                    <h2>⚙️ Quản lý API & Model</h2>
                     <button className="close-btn" onClick={onClose}>&times;</button>
                 </div>
                 
                 <div className="modal-body">
                     {/* Provider Selection */}
                     <div className="form-group">
-                        <label>Chọn Nhà Cung Cấp Chính (Provider):</label>
+                        <label>Chọn Nhà Cung Cấp (Provider):</label>
                         <div className="provider-tabs">
                             {(['gemini', 'openai', 'grok'] as Provider[]).map(p => (
                                 <button
@@ -143,82 +213,76 @@ const SettingsModal = ({
 
                     <hr className="divider" />
 
-                    {/* Gemini Settings */}
-                    <div className={`provider-settings ${localSettings.provider === 'gemini' ? 'active-section' : ''}`}>
-                        <h3>Google Gemini (Khuyên dùng cho Try-On)</h3>
-                        <div className="form-group">
-                            <label>API Key:</label>
-                            <input 
-                                type="password" 
-                                value={localSettings.keys.gemini}
-                                onChange={(e) => handleKeyChange('gemini', e.target.value)}
-                                placeholder="Nhập Gemini API Key..."
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Model:</label>
-                            <select 
-                                value={localSettings.models.gemini}
-                                onChange={(e) => handleModelChange('gemini', e.target.value)}
-                            >
-                                {MODEL_OPTIONS.gemini.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
+                    <div className="provider-settings active-section">
+                        <h3>Cấu hình {localSettings.provider.charAt(0).toUpperCase() + localSettings.provider.slice(1)}</h3>
+                        
+                        {/* API Key Management */}
+                        <div className="api-management-section">
+                            <label style={{display: 'block', marginBottom: '8px', color: '#aaa', fontSize: '0.9rem'}}>Danh sách API Keys:</label>
+                            
+                            <div className="key-list">
+                                {currentProviderKeys.length === 0 ? (
+                                    <div className="empty-keys">Chưa có API Key nào. Vui lòng thêm mới.</div>
+                                ) : (
+                                    currentProviderKeys.map(entry => (
+                                        <div key={entry.id} className={`key-item ${entry.isActive ? 'active-key' : ''}`}>
+                                            <div className="key-info" onClick={() => handleSetActiveKey(entry.id)}>
+                                                <div className={`radio-indicator ${entry.isActive ? 'checked' : ''}`}></div>
+                                                <div className="key-text">
+                                                    <span className="key-label">{entry.label}</span>
+                                                    <span className="key-value">{maskKey(entry.key)}</span>
+                                                </div>
+                                            </div>
+                                            <button className="delete-key-btn" onClick={() => handleDeleteKey(entry.id)} title="Xóa key">
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
 
-                    {/* OpenAI Settings */}
-                    <div className={`provider-settings ${localSettings.provider === 'openai' ? 'active-section' : ''}`}>
-                        <h3>OpenAI (GPT-5 Series)</h3>
-                        <div className="alert-box warning">
-                            ⚠️ Lưu ý: Các model GPT-5 hỗ trợ Agentic Workflow mạnh mẽ, nhưng khả năng chỉnh sửa ảnh (Image-to-Image) trực tiếp có thể hạn chế hơn Gemini Pro Image.
+                            <div className="add-key-form">
+                                <input 
+                                    type="text" 
+                                    placeholder="Tên gợi nhớ (Ví dụ: Personal, Project A)..."
+                                    value={newKeyLabel}
+                                    onChange={(e) => setNewKeyLabel(e.target.value)}
+                                    className="key-label-input"
+                                />
+                                <div className="input-with-btn">
+                                    <input 
+                                        type="password" 
+                                        placeholder={`Nhập ${localSettings.provider} API Key mới...`}
+                                        value={newKeyInput}
+                                        onChange={(e) => setNewKeyInput(e.target.value)}
+                                        className="key-value-input"
+                                    />
+                                    <button className="btn btn-secondary add-btn" onClick={handleAddKey} disabled={!newKeyInput}>
+                                        + Thêm
+                                    </button>
+                                </div>
+                            </div>
                         </div>
-                        <div className="form-group">
-                            <label>API Key:</label>
-                            <input 
-                                type="password" 
-                                value={localSettings.keys.openai}
-                                onChange={(e) => handleKeyChange('openai', e.target.value)}
-                                placeholder="sk-..."
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Model:</label>
-                            <select 
-                                value={localSettings.models.openai}
-                                onChange={(e) => handleModelChange('openai', e.target.value)}
-                            >
-                                {MODEL_OPTIONS.openai.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
 
-                    {/* Grok Settings */}
-                    <div className={`provider-settings ${localSettings.provider === 'grok' ? 'active-section' : ''}`}>
-                        <h3>xAI Grok</h3>
-                        <div className="form-group">
-                            <label>API Key:</label>
-                            <input 
-                                type="password" 
-                                value={localSettings.keys.grok}
-                                onChange={(e) => handleKeyChange('grok', e.target.value)}
-                                placeholder="xai-..."
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label>Model:</label>
+                        {/* Model Selection */}
+                        <div className="form-group" style={{marginTop: '1.5rem'}}>
+                            <label>Chọn Model Mặc Định:</label>
                             <select 
-                                value={localSettings.models.grok}
-                                onChange={(e) => handleModelChange('grok', e.target.value)}
+                                value={localSettings.models[localSettings.provider]}
+                                onChange={(e) => handleModelChange(localSettings.provider, e.target.value)}
                             >
-                                {MODEL_OPTIONS.grok.map(opt => (
+                                {MODEL_OPTIONS[localSettings.provider].map(opt => (
                                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                                 ))}
                             </select>
                         </div>
+
+                         {/* OpenAI Warning */}
+                         {localSettings.provider === 'openai' && (
+                            <div className="alert-box warning" style={{marginTop: '1rem'}}>
+                                ⚠️ Các model GPT-5 hỗ trợ Agentic Workflow mạnh mẽ, nhưng khả năng chỉnh sửa ảnh (Image-to-Image) trực tiếp có thể hạn chế hơn Gemini Pro Image.
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -296,7 +360,34 @@ const App = () => {
     const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
         // Load from local storage or use default
         const saved = localStorage.getItem('ai_studio_settings');
-        return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+        if (saved) {
+            try {
+                const parsed = JSON.parse(saved);
+                
+                // MIGRATION LOGIC: Check if keys are strings (legacy format) and convert to array
+                // Legacy format: keys: { gemini: "string", ... }
+                // New format: keys: { gemini: [{...}], ... }
+                const isLegacy = typeof parsed.keys?.gemini === 'string' || typeof parsed.keys?.openai === 'string';
+                
+                if (isLegacy) {
+                    return {
+                        ...DEFAULT_SETTINGS,
+                        provider: parsed.provider || 'gemini',
+                        keys: {
+                            gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
+                            openai: parsed.keys.openai ? [{ id: 'legacy-openai', key: parsed.keys.openai, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
+                            grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : []
+                        },
+                        models: parsed.models || DEFAULT_SETTINGS.models
+                    };
+                }
+                
+                return parsed;
+            } catch (e) {
+                return DEFAULT_SETTINGS;
+            }
+        }
+        return DEFAULT_SETTINGS;
     });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -359,6 +450,13 @@ const App = () => {
     const [error, setError] = useState<string | null>(null);
     const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
 
+    // Helper to get the Active API Key String
+    const getActiveKey = (provider: Provider): string | null => {
+        const keys = apiSettings.keys[provider];
+        const activeKeyEntry = keys.find(k => k.isActive);
+        return activeKeyEntry ? activeKeyEntry.key : null;
+    };
+
     // Handle Settings Save
     const handleSaveSettings = (newSettings: ApiSettings) => {
         setApiSettings(newSettings);
@@ -369,9 +467,9 @@ const App = () => {
 
     // Helper to check provider validity
     const checkProviderReady = () => {
-        const key = apiSettings.keys[apiSettings.provider];
-        if (!key) {
-            setError(`Vui lòng nhập API Key cho ${apiSettings.provider.toUpperCase()} trong phần Cài đặt.`);
+        const activeKey = getActiveKey(apiSettings.provider);
+        if (!activeKey) {
+            setError(`Vui lòng thêm và kích hoạt API Key cho ${apiSettings.provider.toUpperCase()} trong phần Cài đặt.`);
             setIsSettingsOpen(true);
             return false;
         }
@@ -430,7 +528,8 @@ const App = () => {
         setError(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
+            const activeKey = getActiveKey('gemini');
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
             const imagePart = await fileToGenerativePart(sourceGarmentFile);
             let prompt = '';
             
@@ -517,7 +616,8 @@ const App = () => {
             }
 
             // --- Gemini Implementation ---
-            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
+            const activeKey = getActiveKey('gemini');
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
             
             const parts: any[] = [];
             let instructions = "You are a professional fashion editor and creative director. ";
@@ -661,7 +761,8 @@ const App = () => {
                 throw new Error("Tính năng phục hồi da cần khả năng Multimodal của Gemini để giữ danh tính khuôn mặt tốt nhất.");
             }
 
-            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
+            const activeKey = getActiveKey('gemini');
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
             const imagePart = await fileToGenerativePart(skinFile);
             // Prompt kỹ thuật cao dựa trên cơ chế 9 bước
             const prompt = `
@@ -727,7 +828,8 @@ const App = () => {
                 throw new Error("Tính năng này tối ưu hóa cho Gemini.");
             }
 
-            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
+            const activeKey = getActiveKey('gemini');
+            const ai = new GoogleGenAI({ apiKey: activeKey! });
             const imagePart = await fileToGenerativePart(breastAugFile);
             const prompt = `
             ACT AS: Professional Photo Retoucher specializing in body aesthetics and natural enhancement.
