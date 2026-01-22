@@ -365,8 +365,6 @@ const App = () => {
                 const parsed = JSON.parse(saved);
                 
                 // MIGRATION LOGIC: Check if keys are strings (legacy format) and convert to array
-                // Legacy format: keys: { gemini: "string", ... }
-                // New format: keys: { gemini: [{...}], ... }
                 const isLegacy = typeof parsed.keys?.gemini === 'string' || typeof parsed.keys?.openai === 'string';
                 
                 if (isLegacy) {
@@ -952,11 +950,11 @@ const App = () => {
 
             {activeTab === 'try-on' && (
                 <main className="workflow-container">
-                    {/* Step 1: Manage Garments */}
+                    {/* Step 1: Manage Garments & Data */}
                     <section className="step-card full-width">
                         <h2>
                             <span className="step-number">1</span> 
-                            Chọn Chế Độ Thay Đồ
+                            {tryOnMode === 'full' ? 'Cấu hình & Dữ liệu' : 'Chọn Chế Độ Thay Đồ'}
                         </h2>
                         
                         {/* Mode Switcher */}
@@ -975,27 +973,39 @@ const App = () => {
                             </button>
                         </div>
 
-                        <div className="garment-source-container">
+                        <div className="garment-source-container" style={tryOnMode === 'full' ? {display: 'block'} : {}}>
                             {tryOnMode === 'full' ? (
-                                <>
-                                    <div className="source-upload">
-                                        <ImageUploader
-                                            label="Ảnh Set Đồ (Quần + Áo + Phụ Kiện...)"
-                                            image={fullOutfitPreview}
-                                            onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
-                                            onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
-                                        >
-                                            <p>Tải ảnh chứa nguyên set đồ<br/>(AI sẽ lấy cả giày, trang sức nếu có)</p>
-                                        </ImageUploader>
+                                <div className="full-mode-container">
+                                    {/* 1. Images Row: Outfit + Model Side by Side */}
+                                    <div className="dual-upload-container">
+                                        <div className="upload-box">
+                                            <ImageUploader
+                                                label="1. Ảnh Set Đồ (Quần + Áo + Phụ Kiện...)"
+                                                image={fullOutfitPreview}
+                                                onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
+                                                onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
+                                            >
+                                                <p>Tải ảnh chứa nguyên set đồ<br/>(AI sẽ lấy cả giày, trang sức nếu có)</p>
+                                            </ImageUploader>
+                                        </div>
+                                        <div className="upload-box">
+                                            <ImageUploader
+                                                label="2. Ảnh Người Mẫu (Model)"
+                                                image={modelPreview}
+                                                onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
+                                                onRemove={() => { setModelFile(null); setModelPreview(null); }}
+                                            >
+                                                <p>+ Tải ảnh người mẫu</p>
+                                            </ImageUploader>
+                                        </div>
                                     </div>
                                     
-                                    {/* Granular Selection Options - Moved to right column */}
-                                    <div className="full-set-options-column" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                        <div className="option-toggles-container" style={{ marginTop: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '20px' }}>
-                                            
+                                    {/* 2. Settings Row: Items + Advanced (Below Images) */}
+                                    <div className="settings-panel">
+                                        <div className="settings-columns">
                                             {/* Item Selection Group */}
-                                            <div className="options-group">
-                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>1. Chọn mục cần thay:</label>
+                                            <div className="settings-group">
+                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>3. Chọn mục cần thay:</label>
                                                 <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
                                                     <button 
                                                         className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
@@ -1033,8 +1043,8 @@ const App = () => {
                                             </div>
 
                                             {/* Advanced Settings Group */}
-                                            <div className="options-group">
-                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>2. Cài đặt tạo ảnh:</label>
+                                            <div className="settings-group">
+                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>4. Cài đặt tạo ảnh:</label>
                                                 <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
                                                     <button 
                                                         className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
@@ -1062,10 +1072,9 @@ const App = () => {
                                                     </button>
                                                 </div>
                                             </div>
-
                                         </div>
                                     </div>
-                                </>
+                                </div>
                             ) : (
                                 <>
                                     <div className="source-upload">
@@ -1150,20 +1159,22 @@ const App = () => {
                         </div>
                     </section>
 
-                    {/* Step 2: Model */}
-                    <section className="step-card">
-                        <h2><span className="step-number">2</span> Ảnh Người Mẫu</h2>
-                        <ImageUploader
-                            image={modelPreview}
-                            onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                        >
-                            <p>+ Tải ảnh người mẫu</p>
-                        </ImageUploader>
-                    </section>
+                    {/* Step 2: Model (Only for Mix Mode) */}
+                    {tryOnMode === 'mix' && (
+                        <section className="step-card">
+                            <h2><span className="step-number">2</span> Ảnh Người Mẫu</h2>
+                            <ImageUploader
+                                image={modelPreview}
+                                onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
+                            >
+                                <p>+ Tải ảnh người mẫu</p>
+                            </ImageUploader>
+                        </section>
+                    )}
 
                     {/* Step 3: Finalize */}
                     <section className="step-card">
-                        <h2><span className="step-number">3</span> Hoàn Tất</h2>
+                        <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
                         <div className="finalize-box">
                             <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
                             
@@ -1178,6 +1189,7 @@ const App = () => {
                             {tryOnMode === 'full' && (
                                 <ul className="status-list">
                                     <li>Set đồ: {fullOutfitFile ? '✅ Đã sẵn sàng' : '❌ Chưa có ảnh set'}</li>
+                                    <li>Người mẫu: {modelFile ? '✅ Đã sẵn sàng' : '❌ Chưa có ảnh mẫu'}</li>
                                     <li>Mục cần thay: 
                                         {[
                                             fullSetOptions.clothing ? 'Áo/Quần' : '',

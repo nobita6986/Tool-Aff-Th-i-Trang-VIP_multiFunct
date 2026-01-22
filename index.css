@@ -142,6 +142,41 @@ body {
     padding-right: 2rem;
 }
 
+/* Full Set Mode Layout */
+.full-mode-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    grid-column: 1 / -1; /* Ensure it takes full width in grid context */
+}
+
+.dual-upload-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.upload-box {
+    background: #222;
+    padding: 10px;
+    border-radius: 12px;
+    border: 1px solid #333;
+}
+
+.settings-panel {
+    background: #1c1c1c;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.settings-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+}
+
 /* Option Toggles */
 .option-toggles-container {
     margin-top: 1rem;
@@ -660,6 +695,9 @@ body {
     .garment-source-container { grid-template-columns: 1fr; }
     .source-upload { border-right: none; border-bottom: 1px solid #333; padding-right: 0; padding-bottom: 2rem; }
     .extracted-items { grid-template-columns: repeat(3, 1fr); }
+    
+    .dual-upload-container { grid-template-columns: 1fr; }
+    .settings-columns { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
     .extracted-items { grid-template-columns: 1fr 1fr; }
