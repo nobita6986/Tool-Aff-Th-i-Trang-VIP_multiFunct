@@ -1,0 +1,404 @@
+
+
+/* Basic Reset */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Be Vietnam Pro', sans-serif;
+    background-color: #0f0f0f;
+    color: #f0f0f0;
+    padding: 2rem;
+}
+
+#root {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.app-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.app-header h1 {
+    font-size: 2.8rem;
+    background: linear-gradient(45deg, #bb86fc, #03dac6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+}
+
+.app-header p {
+    color: #aaa;
+}
+
+/* Tab Navigation */
+.tab-navigation {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+}
+
+.tab-btn {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #888;
+    padding: 12px 24px;
+    border-radius: 30px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.tab-btn.active {
+    background: #bb86fc;
+    color: #000;
+    border-color: #bb86fc;
+    box-shadow: 0 4px 15px rgba(187, 134, 252, 0.2);
+}
+
+.tab-btn:hover:not(.active) {
+    background: #252525;
+    color: #fff;
+    border-color: #555;
+}
+
+.workflow-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.step-card {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 20px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+.step-card.full-width {
+    grid-column: 1 / -1;
+}
+
+.step-card h2 {
+    font-size: 1.4rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.section-desc {
+    color: #bbb;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+}
+
+.step-number {
+    background: #bb86fc;
+    color: #000;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+}
+
+/* Garment Management Section */
+.garment-source-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    width: 100%;
+}
+
+.source-upload {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    border-right: 1px solid #333;
+    padding-right: 2rem;
+}
+
+/* Option Toggles */
+.option-toggles-container {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #1e1e1e;
+    border-radius: 12px;
+    border: 1px solid #333;
+}
+
+.option-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.option-btn {
+    padding: 8px 16px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 12px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    align-items: center;
+}
+
+.option-btn:hover {
+    background: #333;
+    color: #fff;
+}
+
+.option-btn.active {
+    background: #bb86fc;
+    color: #000;
+    border-color: #bb86fc;
+    font-weight: 600;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap; /* Added to handle multiple buttons */
+}
+
+.extracted-items {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* Changed to 3 columns for Top, Bottom, Shoes */
+    gap: 1rem;
+}
+
+/* Uploader Styles */
+.uploader-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+}
+
+.uploader-label {
+    font-size: 0.9rem;
+    color: #bb86fc;
+    font-weight: 500;
+}
+
+.image-upload-area {
+    aspect-ratio: 1/1;
+    background: #252525;
+    border: 2px dashed #444;
+    border-radius: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.image-upload-area:hover {
+    border-color: #bb86fc;
+    background: #2a2a2a;
+}
+
+.image-upload-area img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.image-upload-area p {
+    color: #666;
+    text-align: center;
+    font-size: 0.85rem;
+    padding: 1rem;
+}
+
+/* Remove button on image uploader */
+.remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    transition: background 0.2s, transform 0.2s;
+    z-index: 5;
+}
+
+.remove-btn:hover {
+    background: rgba(255, 82, 82, 0.9);
+    transform: scale(1.1);
+}
+
+/* Status list */
+.status-list {
+    list-style: none;
+    margin: 1rem 0;
+    padding: 1rem;
+    background: #222;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.status-list li {
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+}
+
+/* Result Section */
+.result-card {
+    margin-top: 2rem;
+    background: #1a1a1a;
+    border-radius: 20px;
+    padding: 2rem;
+    text-align: center;
+    border: 1px solid #bb86fc55;
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.result-card .image-container {
+    max-width: 600px;
+    margin: 1.5rem auto;
+    background: #000;
+    border-radius: 15px;
+    overflow: hidden;
+    aspect-ratio: 1/1;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.result-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Utilities */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+    font-family: inherit;
+    width: 100%;
+}
+
+.btn-primary { background: #bb86fc; color: #000; }
+.btn-primary:hover:not(:disabled) { background: #a370e0; transform: translateY(-2px); }
+.btn-secondary { background: #333; color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: #444; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.loader-container {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    z-index: 10;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #333;
+    border-top: 4px solid #bb86fc;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-message {
+    background: #ff525222;
+    color: #ff5252;
+    padding: 1rem;
+    border-radius: 10px;
+    margin-bottom: 2rem;
+    text-align: center;
+    border: 1px solid #ff525255;
+}
+
+.hidden-file-input { display: none; }
+
+.download-container {
+    position: relative;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.download-menu {
+    position: absolute;
+    bottom: 110%;
+    left: 0;
+    right: 0;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 50;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+.download-menu button {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: none;
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+}
+
+.download-menu button:hover { background: #333; }
+
+@media (max-width: 768px) {
+    .garment-source-container { grid-template-columns: 1fr; }
+    .source-upload { border-right: none; border-bottom: 1px solid #333; padding-right: 0; padding-bottom: 2rem; }
+    .extracted-items { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 480px) {
+    .extracted-items { grid-template-columns: 1fr 1fr; }
+}
