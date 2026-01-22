@@ -1,7 +1,58 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
+
+// --- Types ---
+type Provider = 'gemini' | 'openai' | 'grok';
+
+interface ApiSettings {
+    provider: Provider;
+    keys: {
+        gemini: string;
+        openai: string;
+        grok: string;
+    };
+    models: {
+        gemini: string;
+        openai: string;
+        grok: string;
+    };
+}
+
+// --- Constants ---
+const DEFAULT_SETTINGS: ApiSettings = {
+    provider: 'gemini',
+    keys: {
+        gemini: process.env.API_KEY || '', // Fallback to env if available
+        openai: '',
+        grok: ''
+    },
+    models: {
+        gemini: 'gemini-3-pro-image-preview',
+        openai: 'gpt-5.2',
+        grok: 'grok-4-1-fast-reasoning'
+    }
+};
+
+const MODEL_OPTIONS = {
+    gemini: [
+        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Nano Banana Pro - Chuyên Ảnh)' },
+        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Mạnh nhất - Suy luận & Code)' },
+        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Tối ưu tốc độ & Chi phí)' }
+    ],
+    openai: [
+        { value: 'gpt-5.2', label: 'GPT-5.2 (Flagship 12/2025)' },
+        { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro (Doanh nghiệp - Chính xác cao)' },
+        { value: 'gpt-5.1', label: 'GPT-5.1 (Stable - Ổn định)' },
+        { value: 'gpt-5-mini', label: 'GPT-5 mini (Nhanh, rẻ)' },
+        { value: 'gpt-5-nano', label: 'GPT-5 nano (Siêu nhỏ, chi phí thấp)' }
+    ],
+    grok: [
+        { value: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning - Suy luận sâu)' },
+        { value: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast (Instant - Tốc độ cao)' }
+    ]
+};
 
 // --- Helper Functions ---
 const fileToGenerativePart = async (file: File) => {
@@ -29,6 +80,157 @@ const urlToGenerativePart = async (url: string) => {
 };
 
 // --- Components ---
+
+// Settings Modal Component
+const SettingsModal = ({ 
+    isOpen, 
+    onClose, 
+    settings, 
+    onSave 
+}: { 
+    isOpen: boolean; 
+    onClose: () => void; 
+    settings: ApiSettings; 
+    onSave: (newSettings: ApiSettings) => void; 
+}) => {
+    const [localSettings, setLocalSettings] = useState<ApiSettings>(settings);
+
+    // Sync local state when modal opens
+    useEffect(() => {
+        if (isOpen) setLocalSettings(settings);
+    }, [isOpen, settings]);
+
+    if (!isOpen) return null;
+
+    const handleKeyChange = (provider: Provider, value: string) => {
+        setLocalSettings(prev => ({
+            ...prev,
+            keys: { ...prev.keys, [provider]: value }
+        }));
+    };
+
+    const handleModelChange = (provider: Provider, value: string) => {
+        setLocalSettings(prev => ({
+            ...prev,
+            models: { ...prev.models, [provider]: value }
+        }));
+    };
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal-content">
+                <div className="modal-header">
+                    <h2>⚙️ Cài đặt AI & API Key</h2>
+                    <button className="close-btn" onClick={onClose}>&times;</button>
+                </div>
+                
+                <div className="modal-body">
+                    {/* Provider Selection */}
+                    <div className="form-group">
+                        <label>Chọn Nhà Cung Cấp Chính (Provider):</label>
+                        <div className="provider-tabs">
+                            {(['gemini', 'openai', 'grok'] as Provider[]).map(p => (
+                                <button
+                                    key={p}
+                                    className={`tab-btn small ${localSettings.provider === p ? 'active' : ''}`}
+                                    onClick={() => setLocalSettings(prev => ({ ...prev, provider: p }))}
+                                >
+                                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <hr className="divider" />
+
+                    {/* Gemini Settings */}
+                    <div className={`provider-settings ${localSettings.provider === 'gemini' ? 'active-section' : ''}`}>
+                        <h3>Google Gemini (Khuyên dùng cho Try-On)</h3>
+                        <div className="form-group">
+                            <label>API Key:</label>
+                            <input 
+                                type="password" 
+                                value={localSettings.keys.gemini}
+                                onChange={(e) => handleKeyChange('gemini', e.target.value)}
+                                placeholder="Nhập Gemini API Key..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Model:</label>
+                            <select 
+                                value={localSettings.models.gemini}
+                                onChange={(e) => handleModelChange('gemini', e.target.value)}
+                            >
+                                {MODEL_OPTIONS.gemini.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* OpenAI Settings */}
+                    <div className={`provider-settings ${localSettings.provider === 'openai' ? 'active-section' : ''}`}>
+                        <h3>OpenAI (GPT-5 Series)</h3>
+                        <div className="alert-box warning">
+                            ⚠️ Lưu ý: Các model GPT-5 hỗ trợ Agentic Workflow mạnh mẽ, nhưng khả năng chỉnh sửa ảnh (Image-to-Image) trực tiếp có thể hạn chế hơn Gemini Pro Image.
+                        </div>
+                        <div className="form-group">
+                            <label>API Key:</label>
+                            <input 
+                                type="password" 
+                                value={localSettings.keys.openai}
+                                onChange={(e) => handleKeyChange('openai', e.target.value)}
+                                placeholder="sk-..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Model:</label>
+                            <select 
+                                value={localSettings.models.openai}
+                                onChange={(e) => handleModelChange('openai', e.target.value)}
+                            >
+                                {MODEL_OPTIONS.openai.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Grok Settings */}
+                    <div className={`provider-settings ${localSettings.provider === 'grok' ? 'active-section' : ''}`}>
+                        <h3>xAI Grok</h3>
+                        <div className="form-group">
+                            <label>API Key:</label>
+                            <input 
+                                type="password" 
+                                value={localSettings.keys.grok}
+                                onChange={(e) => handleKeyChange('grok', e.target.value)}
+                                placeholder="xai-..."
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Model:</label>
+                            <select 
+                                value={localSettings.models.grok}
+                                onChange={(e) => handleModelChange('grok', e.target.value)}
+                            >
+                                {MODEL_OPTIONS.grok.map(opt => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="modal-footer">
+                    <button className="btn btn-secondary" onClick={onClose}>Hủy</button>
+                    <button className="btn btn-primary" onClick={() => onSave(localSettings)}>Lưu Cấu Hình</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ImageUploader = ({ 
     image, 
     onImageSelect, 
@@ -90,6 +292,14 @@ const ImageUploader = ({
 };
 
 const App = () => {
+    // --- API Settings State ---
+    const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
+        // Load from local storage or use default
+        const saved = localStorage.getItem('ai_studio_settings');
+        return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    });
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
     // Tab State
     const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug'>('try-on');
 
@@ -149,7 +359,24 @@ const App = () => {
     const [error, setError] = useState<string | null>(null);
     const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Handle Settings Save
+    const handleSaveSettings = (newSettings: ApiSettings) => {
+        setApiSettings(newSettings);
+        localStorage.setItem('ai_studio_settings', JSON.stringify(newSettings));
+        setIsSettingsOpen(false);
+        setError(null); // Clear errors
+    };
+
+    // Helper to check provider validity
+    const checkProviderReady = () => {
+        const key = apiSettings.keys[apiSettings.provider];
+        if (!key) {
+            setError(`Vui lòng nhập API Key cho ${apiSettings.provider.toUpperCase()} trong phần Cài đặt.`);
+            setIsSettingsOpen(true);
+            return false;
+        }
+        return true;
+    };
 
     const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug') => {
         setActiveTab(tab);
@@ -184,6 +411,13 @@ const App = () => {
     };
 
     const handleExtract = async (type: 'top' | 'bottom' | 'shoes') => {
+        if (!checkProviderReady()) return;
+        
+        if (apiSettings.provider !== 'gemini') {
+            setError("Tính năng Tách đồ (Segment) hiện tại chỉ hỗ trợ tốt nhất trên Gemini.");
+            return;
+        }
+
         if (!sourceGarmentFile) {
             setError('Vui lòng tải ảnh gốc để tách trang phục.');
             return;
@@ -196,6 +430,7 @@ const App = () => {
         setError(null);
 
         try {
+            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
             const imagePart = await fileToGenerativePart(sourceGarmentFile);
             let prompt = '';
             
@@ -208,7 +443,7 @@ const App = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: apiSettings.models.gemini,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -248,6 +483,8 @@ const App = () => {
     };
 
     const handleGenerateTryOn = async () => {
+        if (!checkProviderReady()) return;
+
         if (!modelFile) {
             setError('Vui lòng tải ảnh người mẫu.');
             return;
@@ -268,6 +505,20 @@ const App = () => {
         setFinalImage(null);
 
         try {
+            // Check Provider logic
+            if (apiSettings.provider !== 'gemini') {
+                 // Warning/Fallback for OpenAI/Grok
+                 if (apiSettings.provider === 'openai') {
+                     throw new Error("Tính năng Virtual Try-On cần đầu vào nhiều ảnh để xử lý trực tiếp. OpenAI API hiện chưa hỗ trợ tốt quy trình Image-to-Image này (DALL-E 3 chỉ hỗ trợ Text-to-Image). Vui lòng chuyển sang Gemini.");
+                 }
+                 if (apiSettings.provider === 'grok') {
+                     throw new Error("Grok hiện chưa hỗ trợ tính năng Image-to-Image Editing phức tạp này. Vui lòng chuyển sang Gemini.");
+                 }
+            }
+
+            // --- Gemini Implementation ---
+            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
+            
             const parts: any[] = [];
             let instructions = "You are a professional fashion editor and creative director. ";
 
@@ -375,7 +626,7 @@ const App = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: apiSettings.models.gemini,
                 contents: { parts: [...parts, { text: instructions }] },
                 config: { responseModalities: [Modality.IMAGE] },
             });
@@ -384,7 +635,7 @@ const App = () => {
             if (firstPart && firstPart.inlineData) {
                 setFinalImage(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
             } else {
-                throw new Error("AI không thể tạo ảnh. Vui lòng thử lại.");
+                throw new Error("AI không thể tạo ảnh. Vui lòng thử lại hoặc đổi Model.");
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Lỗi ghép đồ.');
@@ -394,6 +645,8 @@ const App = () => {
     };
 
     const handleFixSkin = async () => {
+        if (!checkProviderReady()) return;
+
         if (!skinFile) {
             setError('Vui lòng tải ảnh cần xử lý.');
             return;
@@ -404,6 +657,11 @@ const App = () => {
         setSkinResult(null);
 
         try {
+            if (apiSettings.provider !== 'gemini') {
+                throw new Error("Tính năng phục hồi da cần khả năng Multimodal của Gemini để giữ danh tính khuôn mặt tốt nhất.");
+            }
+
+            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
             const imagePart = await fileToGenerativePart(skinFile);
             // Prompt kỹ thuật cao dựa trên cơ chế 9 bước
             const prompt = `
@@ -432,7 +690,7 @@ const App = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: apiSettings.models.gemini,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -453,6 +711,8 @@ const App = () => {
     };
 
     const handleBreastAugmentation = async () => {
+        if (!checkProviderReady()) return;
+
         if (!breastAugFile) {
             setError('Vui lòng tải ảnh nhân vật.');
             return;
@@ -463,6 +723,11 @@ const App = () => {
         setBreastAugResult(null);
 
         try {
+            if (apiSettings.provider !== 'gemini') {
+                throw new Error("Tính năng này tối ưu hóa cho Gemini.");
+            }
+
+            const ai = new GoogleGenAI({ apiKey: apiSettings.keys.gemini });
             const imagePart = await fileToGenerativePart(breastAugFile);
             const prompt = `
             ACT AS: Professional Photo Retoucher specializing in body aesthetics and natural enhancement.
@@ -485,7 +750,7 @@ const App = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: apiSettings.models.gemini,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -544,7 +809,21 @@ const App = () => {
             <header className="app-header">
                 <h1>AI Studio VIP</h1>
                 <p>Bộ công cụ xử lý ảnh chuyên nghiệp</p>
+                <button 
+                    className="btn btn-secondary" 
+                    style={{ width: 'auto', padding: '8px 16px', marginTop: '10px', fontSize: '0.9rem' }}
+                    onClick={() => setIsSettingsOpen(true)}
+                >
+                    ⚙️ Cài đặt AI
+                </button>
             </header>
+
+            <SettingsModal 
+                isOpen={isSettingsOpen} 
+                onClose={() => setIsSettingsOpen(false)} 
+                settings={apiSettings} 
+                onSave={handleSaveSettings} 
+            />
 
             <div className="tab-navigation">
                 <button 

@@ -74,6 +74,12 @@ body {
     border-color: #555;
 }
 
+/* Small Tabs for Modal */
+.tab-btn.small {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+}
+
 .workflow-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -393,6 +399,136 @@ body {
 }
 
 .download-menu button:hover { background: #333; }
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: #1e1e1e;
+    width: 100%;
+    max-width: 500px;
+    border-radius: 16px;
+    border: 1px solid #333;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    font-size: 1.25rem;
+    color: #fff;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 2rem;
+    cursor: pointer;
+    line-height: 0.5;
+}
+
+.close-btn:hover {
+    color: #fff;
+}
+
+.modal-body {
+    padding: 1.5rem;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: #aaa;
+}
+
+.form-group input, .form-group select {
+    width: 100%;
+    padding: 12px;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 1rem;
+}
+
+.form-group input:focus, .form-group select:focus {
+    outline: none;
+    border-color: #bb86fc;
+}
+
+.provider-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.provider-settings {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.provider-settings.active-section {
+    display: block;
+}
+
+.provider-settings h3 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: #bb86fc;
+}
+
+.divider {
+    border: 0;
+    border-top: 1px solid #333;
+    margin: 1.5rem 0;
+}
+
+.modal-footer {
+    padding: 1.5rem;
+    border-top: 1px solid #333;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+.modal-footer .btn {
+    width: auto;
+}
+
+.alert-box {
+    padding: 1rem;
+    background: #332b00;
+    border: 1px solid #665500;
+    border-radius: 8px;
+    color: #ffda6a;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin-bottom: 1.5rem;
+}
 
 @media (max-width: 768px) {
     .garment-source-container { grid-template-columns: 1fr; }
