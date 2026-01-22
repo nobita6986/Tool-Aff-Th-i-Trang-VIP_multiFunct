@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
 
 // --- Types ---
-type Provider = 'gemini' | 'openai' | 'grok';
+type Provider = 'gemini' | 'grok';
 
 interface ApiKeyEntry {
     id: string;
@@ -18,12 +18,10 @@ interface ApiSettings {
     provider: Provider;
     keys: {
         gemini: ApiKeyEntry[];
-        openai: ApiKeyEntry[];
         grok: ApiKeyEntry[];
     };
     models: {
         gemini: string;
-        openai: string;
         grok: string;
     };
 }
@@ -35,12 +33,10 @@ const DEFAULT_SETTINGS: ApiSettings = {
         gemini: process.env.API_KEY 
             ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }] 
             : [],
-        openai: [],
         grok: []
     },
     models: {
         gemini: 'gemini-3-pro-image-preview',
-        openai: 'gpt-5.2',
         grok: 'grok-4-1-fast-reasoning'
     }
 };
@@ -50,13 +46,6 @@ const MODEL_OPTIONS = {
         { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Nano Banana Pro - Chuyên Ảnh)' },
         { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Mạnh nhất - Suy luận & Code)' },
         { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Tối ưu tốc độ & Chi phí)' }
-    ],
-    openai: [
-        { value: 'gpt-5.2', label: 'GPT-5.2 (Flagship 12/2025)' },
-        { value: 'gpt-5.2-pro', label: 'GPT-5.2 Pro (Doanh nghiệp - Chính xác cao)' },
-        { value: 'gpt-5.1', label: 'GPT-5.1 (Stable - Ổn định)' },
-        { value: 'gpt-5-mini', label: 'GPT-5 mini (Nhanh, rẻ)' },
-        { value: 'gpt-5-nano', label: 'GPT-5 nano (Siêu nhỏ, chi phí thấp)' }
     ],
     grok: [
         { value: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning - Suy luận sâu)' },
@@ -199,7 +188,7 @@ const SettingsModal = ({
                     <div className="form-group">
                         <label>Chọn Nhà Cung Cấp (Provider):</label>
                         <div className="provider-tabs">
-                            {(['gemini', 'openai', 'grok'] as Provider[]).map(p => (
+                            {(['gemini', 'grok'] as Provider[]).map(p => (
                                 <button
                                     key={p}
                                     className={`tab-btn small ${localSettings.provider === p ? 'active' : ''}`}
@@ -276,13 +265,6 @@ const SettingsModal = ({
                                 ))}
                             </select>
                         </div>
-
-                         {/* OpenAI Warning */}
-                         {localSettings.provider === 'openai' && (
-                            <div className="alert-box warning" style={{marginTop: '1rem'}}>
-                                ⚠️ Các model GPT-5 hỗ trợ Agentic Workflow mạnh mẽ, nhưng khả năng chỉnh sửa ảnh (Image-to-Image) trực tiếp có thể hạn chế hơn Gemini Pro Image.
-                            </div>
-                        )}
                     </div>
                 </div>
 
@@ -373,7 +355,6 @@ const App = () => {
                         provider: parsed.provider || 'gemini',
                         keys: {
                             gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
-                            openai: parsed.keys.openai ? [{ id: 'legacy-openai', key: parsed.keys.openai, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
                             grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : []
                         },
                         models: parsed.models || DEFAULT_SETTINGS.models
@@ -509,11 +490,6 @@ const App = () => {
 
     const handleExtract = async (type: 'top' | 'bottom' | 'shoes') => {
         if (!checkProviderReady()) return;
-        
-        if (apiSettings.provider !== 'gemini') {
-            setError("Tính năng Tách đồ (Segment) hiện tại chỉ hỗ trợ tốt nhất trên Gemini.");
-            return;
-        }
 
         if (!sourceGarmentFile) {
             setError('Vui lòng tải ảnh gốc để tách trang phục.');
@@ -527,7 +503,7 @@ const App = () => {
         setError(null);
 
         try {
-            const activeKey = getActiveKey('gemini');
+            const activeKey = getActiveKey(apiSettings.provider);
             const ai = new GoogleGenAI({ apiKey: activeKey! });
             const imagePart = await fileToGenerativePart(sourceGarmentFile);
             let prompt = '';
@@ -541,7 +517,7 @@ const App = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: apiSettings.models.gemini,
+                model: apiSettings.models[apiSettings.provider],
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -608,19 +584,9 @@ const App = () => {
         setFinalImage(null);
 
         try {
-            // Check Provider logic
-            if (apiSettings.provider !== 'gemini') {
-                 // Warning/Fallback for OpenAI/Grok
-                 if (apiSettings.provider === 'openai') {
-                     throw new Error("Tính năng Virtual Try-On cần đầu vào nhiều ảnh để xử lý trực tiếp. OpenAI API hiện chưa hỗ trợ tốt quy trình Image-to-Image này (DALL-E 3 chỉ hỗ trợ Text-to-Image). Vui lòng chuyển sang Gemini.");
-                 }
-                 if (apiSettings.provider === 'grok') {
-                     throw new Error("Grok hiện chưa hỗ trợ tính năng Image-to-Image Editing phức tạp này. Vui lòng chuyển sang Gemini.");
-                 }
-            }
-
-            // --- Gemini Implementation ---
-            const activeKey = getActiveKey('gemini');
+            // Use configured provider
+            const activeKey = getActiveKey(apiSettings.provider);
+            const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
             
             const parts: any[] = [];
@@ -730,7 +696,7 @@ const App = () => {
             }
 
             const response = await ai.models.generateContent({
-                model: apiSettings.models.gemini,
+                model: selectedModel,
                 contents: { parts: [...parts, { text: instructions }] },
                 config: { 
                     responseModalities: [Modality.IMAGE],
@@ -766,12 +732,10 @@ const App = () => {
         setSkinResult(null);
 
         try {
-            if (apiSettings.provider !== 'gemini') {
-                throw new Error("Tính năng phục hồi da cần khả năng Multimodal của Gemini để giữ danh tính khuôn mặt tốt nhất.");
-            }
-
-            const activeKey = getActiveKey('gemini');
+            const activeKey = getActiveKey(apiSettings.provider);
+            const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
+            
             const imagePart = await fileToGenerativePart(skinFile);
             // Prompt kỹ thuật cao dựa trên cơ chế 9 bước
             const prompt = `
@@ -800,7 +764,7 @@ const App = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: apiSettings.models.gemini,
+                model: selectedModel,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -833,12 +797,10 @@ const App = () => {
         setBreastAugResult(null);
 
         try {
-            if (apiSettings.provider !== 'gemini') {
-                throw new Error("Tính năng này tối ưu hóa cho Gemini.");
-            }
-
-            const activeKey = getActiveKey('gemini');
+            const activeKey = getActiveKey(apiSettings.provider);
+            const selectedModel = apiSettings.models[apiSettings.provider];
             const ai = new GoogleGenAI({ apiKey: activeKey! });
+            
             const imagePart = await fileToGenerativePart(breastAugFile);
             const prompt = `
             ACT AS: Professional Photo Retoucher specializing in body aesthetics and natural enhancement.
@@ -861,7 +823,7 @@ const App = () => {
             `;
 
             const response = await ai.models.generateContent({
-                model: apiSettings.models.gemini,
+                model: selectedModel,
                 contents: {
                     parts: [imagePart, { text: prompt }],
                 },
@@ -1015,90 +977,98 @@ const App = () => {
                                     <div className="settings-panel">
                                         <div className="settings-columns">
                                             {/* Item Selection Group */}
-                                            <div className="settings-group">
-                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>3. Chọn mục cần thay:</label>
-                                                <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
-                                                    <button 
-                                                        className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
-                                                        onClick={() => toggleFullSetOption('clothing')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>👗 Quần/Áo/Váy</span>
-                                                        {fullSetOptions.clothing && <span>✓</span>}
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`}
-                                                        onClick={() => toggleFullSetOption('shoes')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>👠 Giày/Dép</span>
-                                                        {fullSetOptions.shoes && <span>✓</span>}
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`}
-                                                        onClick={() => toggleFullSetOption('jewelry')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>💎 Trang sức</span>
-                                                        {fullSetOptions.jewelry && <span>✓</span>}
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`}
-                                                        onClick={() => toggleFullSetOption('bag')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>👜 Túi xách</span>
-                                                        {fullSetOptions.bag && <span>✓</span>}
-                                                    </button>
+                                            <div className="settings-card">
+                                                <div className="settings-card-header">
+                                                    <label>3. Chọn mục cần thay:</label>
+                                                </div>
+                                                <div className="settings-card-body">
+                                                    <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
+                                                        <button 
+                                                            className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
+                                                            onClick={() => toggleFullSetOption('clothing')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                                                        >
+                                                            <span>👗 Quần/Áo/Váy</span>
+                                                            {fullSetOptions.clothing && <span>✓</span>}
+                                                        </button>
+                                                        <button 
+                                                            className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`}
+                                                            onClick={() => toggleFullSetOption('shoes')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                                                        >
+                                                            <span>👠 Giày/Dép</span>
+                                                            {fullSetOptions.shoes && <span>✓</span>}
+                                                        </button>
+                                                        <button 
+                                                            className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`}
+                                                            onClick={() => toggleFullSetOption('jewelry')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                                                        >
+                                                            <span>💎 Trang sức</span>
+                                                            {fullSetOptions.jewelry && <span>✓</span>}
+                                                        </button>
+                                                        <button 
+                                                            className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`}
+                                                            onClick={() => toggleFullSetOption('bag')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                                                        >
+                                                            <span>👜 Túi xách</span>
+                                                            {fullSetOptions.bag && <span>✓</span>}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
 
                                             {/* Advanced Settings Group */}
-                                            <div className="settings-group">
-                                                <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>4. Cài đặt tạo ảnh:</label>
-                                                <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
-                                                    {/* Aspect Ratio Selection */}
-                                                    <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', marginBottom: '4px'}}>
+                                            <div className="settings-card">
+                                                <div className="settings-card-header">
+                                                    <label>4. Cài đặt tạo ảnh:</label>
+                                                </div>
+                                                <div className="settings-card-body">
+                                                    <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
+                                                        {/* Aspect Ratio Selection */}
+                                                        <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', marginBottom: '4px'}}>
+                                                            <button 
+                                                                className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                                onClick={() => setAspectRatio('9:16')}
+                                                                style={{ flex: 1, justifyContent: 'center' }}
+                                                            >
+                                                                📱 Dọc (9:16)
+                                                            </button>
+                                                            <button 
+                                                                className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                                onClick={() => setAspectRatio('16:9')}
+                                                                style={{ flex: 1, justifyContent: 'center' }}
+                                                            >
+                                                                💻 Ngang (16:9)
+                                                            </button>
+                                                        </div>
+
                                                         <button 
-                                                            className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                            onClick={() => setAspectRatio('9:16')}
-                                                            style={{ flex: 1, justifyContent: 'center' }}
+                                                            className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                            onClick={() => toggleGenerationSetting('changePose')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
                                                         >
-                                                            📱 Dọc (9:16)
+                                                            <span>💃 Thay đổi tư thế</span>
+                                                            {generationSettings.changePose && <span>✓</span>}
                                                         </button>
                                                         <button 
-                                                            className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                            onClick={() => setAspectRatio('16:9')}
-                                                            style={{ flex: 1, justifyContent: 'center' }}
+                                                            className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                            onClick={() => toggleGenerationSetting('changeBackground')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
                                                         >
-                                                            💻 Ngang (16:9)
+                                                            <span>🏞️ Đổi bối cảnh</span>
+                                                            {generationSettings.changeBackground && <span>✓</span>}
+                                                        </button>
+                                                        <button 
+                                                            className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                                            onClick={() => toggleGenerationSetting('generateFullBody')}
+                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
+                                                        >
+                                                            <span>🧍 Tạo ảnh toàn thân</span>
+                                                            {generationSettings.generateFullBody && <span>✓</span>}
                                                         </button>
                                                     </div>
-
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('changePose')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>💃 Thay đổi tư thế</span>
-                                                        {generationSettings.changePose && <span>✓</span>}
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('changeBackground')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>🏞️ Đổi bối cảnh</span>
-                                                        {generationSettings.changeBackground && <span>✓</span>}
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                        style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                    >
-                                                        <span>🧍 Tạo ảnh toàn thân</span>
-                                                        {generationSettings.generateFullBody && <span>✓</span>}
-                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
