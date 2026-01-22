@@ -423,7 +423,8 @@ const App = () => {
     const [generationSettings, setGenerationSettings] = useState({
         changePose: false,      // Thay đổi tư thế
         changeBackground: false, // Đổi bối cảnh
-        generateFullBody: false // Tạo ảnh toàn thân
+        generateFullBody: false, // Tạo ảnh toàn thân
+        aspectRatio: '9:16' as '9:16' | '16:9' // Aspect Ratio
     });
 
     // Common Try-On States
@@ -573,10 +574,15 @@ const App = () => {
     };
 
     const toggleGenerationSetting = (option: keyof typeof generationSettings) => {
+        if (option === 'aspectRatio') return; // Handled separately
         setGenerationSettings(prev => ({
             ...prev,
-            [option]: !prev[option]
+            [option]: !prev[option as keyof typeof prev]
         }));
+    };
+
+    const setAspectRatio = (ratio: '9:16' | '16:9') => {
+        setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
     };
 
     const handleGenerateTryOn = async () => {
@@ -726,7 +732,12 @@ const App = () => {
             const response = await ai.models.generateContent({
                 model: apiSettings.models.gemini,
                 contents: { parts: [...parts, { text: instructions }] },
-                config: { responseModalities: [Modality.IMAGE] },
+                config: { 
+                    responseModalities: [Modality.IMAGE],
+                    imageConfig: {
+                        aspectRatio: generationSettings.aspectRatio
+                    }
+                },
             });
 
             const firstPart = response.candidates?.[0]?.content?.parts?.[0];
@@ -1046,6 +1057,24 @@ const App = () => {
                                             <div className="settings-group">
                                                 <label className="uploader-label" style={{marginBottom: '1rem', display: 'block', fontSize: '1.1rem', borderBottom: '1px solid #333', paddingBottom: '8px'}}>4. Cài đặt tạo ảnh:</label>
                                                 <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
+                                                    {/* Aspect Ratio Selection */}
+                                                    <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', marginBottom: '4px'}}>
+                                                        <button 
+                                                            className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                            onClick={() => setAspectRatio('9:16')}
+                                                            style={{ flex: 1, justifyContent: 'center' }}
+                                                        >
+                                                            📱 Dọc (9:16)
+                                                        </button>
+                                                        <button 
+                                                            className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                            onClick={() => setAspectRatio('16:9')}
+                                                            style={{ flex: 1, justifyContent: 'center' }}
+                                                        >
+                                                            💻 Ngang (16:9)
+                                                        </button>
+                                                    </div>
+
                                                     <button 
                                                         className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
                                                         onClick={() => toggleGenerationSetting('changePose')}
@@ -1173,42 +1202,45 @@ const App = () => {
                     )}
 
                     {/* Step 3: Finalize */}
-                    <section className="step-card">
+                    <section className={`step-card ${tryOnMode === 'full' ? 'full-width' : ''}`}>
                         <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
-                        <div className="finalize-box">
-                            <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
-                            
-                            {tryOnMode === 'mix' && (
-                                <ul className="status-list">
-                                    <li>Áo: {topImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
-                                    <li>Quần: {bottomImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
-                                    <li>Giày: {shoesImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
-                                </ul>
-                            )}
-                            
-                            {tryOnMode === 'full' && (
-                                <ul className="status-list">
-                                    <li>Set đồ: {fullOutfitFile ? '✅ Đã sẵn sàng' : '❌ Chưa có ảnh set'}</li>
-                                    <li>Người mẫu: {modelFile ? '✅ Đã sẵn sàng' : '❌ Chưa có ảnh mẫu'}</li>
-                                    <li>Mục cần thay: 
-                                        {[
-                                            fullSetOptions.clothing ? 'Áo/Quần' : '',
-                                            fullSetOptions.shoes ? 'Giày' : '',
-                                            fullSetOptions.jewelry ? 'Trang sức' : '',
-                                            fullSetOptions.bag ? 'Túi' : ''
-                                        ].filter(Boolean).join(', ') || 'Chưa chọn'}
-                                    </li>
-                                </ul>
-                            )}
+                        <div className={`finalize-box ${tryOnMode === 'full' ? 'balanced-layout' : ''}`}>
+                            <div className="summary-info">
+                                <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
+                                
+                                {tryOnMode === 'mix' && (
+                                    <ul className="status-list">
+                                        <li>Áo: {topImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
+                                        <li>Quần: {bottomImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
+                                        <li>Giày: {shoesImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
+                                    </ul>
+                                )}
+                                
+                                {tryOnMode === 'full' && (
+                                    <ul className="status-list balanced-list">
+                                        <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                        <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                        <li>Thay: 
+                                            {[
+                                                fullSetOptions.clothing ? 'Áo/Quần' : '',
+                                                fullSetOptions.shoes ? 'Giày' : '',
+                                                fullSetOptions.jewelry ? 'Trang sức' : '',
+                                                fullSetOptions.bag ? 'Túi' : ''
+                                            ].filter(Boolean).join(', ') || 'Chưa chọn'}
+                                        </li>
+                                    </ul>
+                                )}
 
-                            <div className="generation-settings-summary" style={{ fontSize: '0.9rem', color: '#aaa', marginBottom: '1rem', fontStyle: 'italic' }}>
-                                {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ nguyên tư thế'} • 
-                                {generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nguyên nền'} • 
-                                {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung hình'}
+                                <div className="generation-settings-summary" style={{ fontSize: '0.9rem', color: '#aaa', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                                    {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
+                                    {generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền'} • 
+                                    {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
+                                    {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
+                                </div>
                             </div>
 
                             <button 
-                                className="btn btn-primary" 
+                                className="btn btn-primary start-btn" 
                                 onClick={handleGenerateTryOn} 
                                 disabled={
                                     isGenerating || 
