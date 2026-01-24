@@ -479,7 +479,8 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                { text: "Retouch this portrait to enhance skin texture resolution and lighting. Remove artificial smoothing to reveal natural skin details. Maintain the original identity, outfit, and background exactly. High-end fashion photography style." }
+                // Updated Prompt for stronger effect
+                { text: "TASK: Realistic Skin Texture Restoration.\nACTION: The input image suffers from \"plastic/waxy\" skin smoothing. Generate a NEW image with Hyper-Realistic Skin Texture.\nDETAILS:\n1. TEXTURE: Add high-resolution skin pores, micro-details, and natural slight imperfections. The skin must NOT look smooth or filtered.\n2. LIGHTING: Adjust lighting on the face to highlight natural skin topography.\n3. PRESERVATION: Keep the exact Identity (Face features), Hairstyle, Outfit, and Background. Only change the Skin Surface quality." }
             ];
 
             await executeWithRotation(async (key) => {
@@ -538,8 +539,8 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt to be safer and avoid triggering sexual content filters
-                { text: "Edit this fashion image to accentuate the subject's hourglass figure and curves, making the upper body silhouette appear more voluminous and shapely. Keep the clothing natural and realistic. Photorealistic fashion edit." }
+                // Updated Prompt for stronger effect
+                { text: "TASK: Body Silhouette Enhancement.\nACTION: Edit the body shape to create a significantly more curvaceous and voluminous figure.\nDETAILS:\n1. UPPER BODY: Visually increase the volume and projection of the chest area to create a \"lifted\" and fuller look.\n2. WAIST: Slight slimming of the waist to accentuate the hourglass ratio.\n3. CLOTHING: The clothes must physically react to the new body shape (natural stretching/draping).\n4. PRESERVATION: Strictly maintain the face, identity, pose, and background. The result must be Photorealistic." }
             ];
 
             await executeWithRotation(async (key) => {
