@@ -479,8 +479,15 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt for stronger effect
-                { text: "TASK: Realistic Skin Texture Restoration.\nACTION: The input image suffers from \"plastic/waxy\" skin smoothing. Generate a NEW image with Hyper-Realistic Skin Texture.\nDETAILS:\n1. TEXTURE: Add high-resolution skin pores, micro-details, and natural slight imperfections. The skin must NOT look smooth or filtered.\n2. LIGHTING: Adjust lighting on the face to highlight natural skin topography.\n3. PRESERVATION: Keep the exact Identity (Face features), Hairstyle, Outfit, and Background. Only change the Skin Surface quality." }
+                // Updated Prompt to be much more specific about texture to remove the "plastic" look
+                { text: "TASK: Texture Restoration (De-Smoothing).\n\n" +
+                  "GOAL: The input image looks too 'plastic' or 'filtered'. Generate a NEW image with coarse, hyper-realistic skin texture.\n\n" +
+                  "INSTRUCTIONS:\n" +
+                  "1. ADD DETAILS: Hallucinate and overlay high-frequency details: clear pores, peach fuzz, slight unevenness, and natural skin grain.\n" +
+                  "2. LIGHTING: Increase micro-contrast on the face to emphasize texture depth.\n" +
+                  "3. NO SMOOTHING: Do absolutely NO smoothing. The result must look like a raw, high-resolution 8K photograph.\n" +
+                  "4. IDENTITY: Keep the face features identical."
+                }
             ];
 
             await executeWithRotation(async (key) => {
@@ -539,8 +546,15 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt for stronger effect
-                { text: "TASK: Body Silhouette Enhancement.\nACTION: Edit the body shape to create a significantly more curvaceous and voluminous figure.\nDETAILS:\n1. UPPER BODY: Visually increase the volume and projection of the chest area to create a \"lifted\" and fuller look.\n2. WAIST: Slight slimming of the waist to accentuate the hourglass ratio.\n3. CLOTHING: The clothes must physically react to the new body shape (natural stretching/draping).\n4. PRESERVATION: Strictly maintain the face, identity, pose, and background. The result must be Photorealistic." }
+                // Aggressive prompt to force clothing change to match body
+                { text: "TASK: Body Scultping & Silhouette Transformation.\n\n" +
+                  "GOAL: Retouch the subject to have a significantly curvier, 'Hourglass' figure. The change must be OBVIOUS and VISIBLE.\n\n" +
+                  "STRICT EDITING RULES:\n" +
+                  "1. UPPER BODY: significantly INCREASE the volume, size, and projection of the chest/bust area. The clothing MUST appear tighter and stretched to accommodate the larger size.\n" +
+                  "2. WAIST: CINCH and slim the waist to create a dramatic curve ratio between bust-waist-hips.\n" +
+                  "3. CLOTHING PHYSICS: Do NOT preserve the original fabric folds if they hide the body. Redraw the clothing to fit the new, curvier body shape tightly.\n" +
+                  "4. PRESERVATION: Keep the Face, Hair, and Background exactly the same. Only the body shape below the neck changes."
+                }
             ];
 
             await executeWithRotation(async (key) => {
