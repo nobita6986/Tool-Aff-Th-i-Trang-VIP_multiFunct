@@ -1,335 +1,43 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
-// --- Types ---
-type Provider = 'gemini' | 'grok';
-
-interface ApiKeyEntry {
-    id: string;
-    key: string;
-    label: string;
-    isActive: boolean;
-    createdAt: number;
-}
-
-interface ApiSettings {
-    provider: Provider;
-    keys: {
-        gemini: ApiKeyEntry[];
-        grok: ApiKeyEntry[];
-    };
-    models: {
-        gemini: string;
-        grok: string;
-    };
-}
-
-// --- Constants ---
-const DEFAULT_SETTINGS: ApiSettings = {
-    provider: 'gemini',
-    keys: {
-        gemini: process.env.API_KEY 
-            ? [{ id: 'env-key', key: process.env.API_KEY, label: 'System Env', isActive: true, createdAt: Date.now() }] 
-            : [],
-        grok: []
-    },
-    models: {
-        gemini: 'gemini-3-pro-image-preview',
-        grok: 'grok-4-1-fast-reasoning'
-    }
-};
-
-const MODEL_OPTIONS = {
-    gemini: [
-        { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Nano Banana Pro - Chuyên Ảnh)' },
-        { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Mạnh nhất - Suy luận & Code)' },
-        { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Tối ưu tốc độ & Chi phí)' }
-    ],
-    grok: [
-        { value: 'grok-4-1-fast-reasoning', label: 'Grok 4.1 Fast (Reasoning - Suy luận sâu)' },
-        { value: 'grok-4-1-fast-non-reasoning', label: 'Grok 4.1 Fast (Instant - Tốc độ cao)' }
-    ]
-};
-
-// --- Helper Functions ---
-const fileToGenerativePart = async (file: File) => {
-    const base64EncodedDataPromise = new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(file);
-    });
-    return {
-        inlineData: { data: await base64EncodedDataPromise, mimeType: file.type },
-    };
-};
-
-const urlToGenerativePart = async (url: string) => {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(blob);
-    });
-    return {
-        inlineData: { data: base64, mimeType: blob.type },
-    };
-};
-
-// Mask API Key for display
-const maskKey = (key: string) => {
-    if (key.length <= 8) return '********';
-    return `${key.slice(0, 4)}...${key.slice(-4)}`;
-};
-
-// --- Components ---
-
-// Settings Modal Component
-const SettingsModal = ({ 
-    isOpen, 
-    onClose, 
-    settings, 
-    onSave 
-}: { 
-    isOpen: boolean; 
-    onClose: () => void; 
-    settings: ApiSettings; 
-    onSave: (newSettings: ApiSettings) => void; 
-}) => {
-    const [localSettings, setLocalSettings] = useState<ApiSettings>(settings);
-    const [newKeyInput, setNewKeyInput] = useState('');
-    const [newKeyLabel, setNewKeyLabel] = useState('');
-
-    // Sync local state when modal opens
-    useEffect(() => {
-        if (isOpen) {
-            setLocalSettings(settings);
-            setNewKeyInput('');
-            setNewKeyLabel('');
-        }
-    }, [isOpen, settings]);
-
-    if (!isOpen) return null;
-
-    const currentProviderKeys = localSettings.keys[localSettings.provider];
-
-    const handleModelChange = (provider: Provider, value: string) => {
-        setLocalSettings(prev => ({
-            ...prev,
-            models: { ...prev.models, [provider]: value }
-        }));
-    };
-
-    const handleAddKey = () => {
-        if (!newKeyInput.trim()) return;
-        
-        const newEntry: ApiKeyEntry = {
-            id: crypto.randomUUID(),
-            key: newKeyInput.trim(),
-            label: newKeyLabel.trim() || `Key ${currentProviderKeys.length + 1}`,
-            isActive: currentProviderKeys.length === 0, // Auto activate if it's the first key
-            createdAt: Date.now()
-        };
-
-        setLocalSettings(prev => ({
-            ...prev,
-            keys: {
-                ...prev.keys,
-                [prev.provider]: [...prev.keys[prev.provider], newEntry]
-            }
-        }));
-
-        setNewKeyInput('');
-        setNewKeyLabel('');
-    };
-
-    const handleDeleteKey = (id: string) => {
-        setLocalSettings(prev => {
-            const updatedKeys = prev.keys[prev.provider].filter(k => k.id !== id);
-            // If we deleted the active key, make the first one active (if exists)
-            if (updatedKeys.length > 0 && !updatedKeys.some(k => k.isActive)) {
-                updatedKeys[0].isActive = true;
-            }
-            return {
-                ...prev,
-                keys: {
-                    ...prev.keys,
-                    [prev.provider]: updatedKeys
-                }
-            };
-        });
-    };
-
-    const handleSetActiveKey = (id: string) => {
-        setLocalSettings(prev => ({
-            ...prev,
-            keys: {
-                ...prev.keys,
-                [prev.provider]: prev.keys[prev.provider].map(k => ({
-                    ...k,
-                    isActive: k.id === id
-                }))
-            }
-        }));
-    };
-
-    return (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <div className="modal-header">
-                    <h2>⚙️ Quản lý API & Model</h2>
-                    <button className="close-btn" onClick={onClose}>&times;</button>
-                </div>
-                
-                <div className="modal-body">
-                    {/* Provider Selection */}
-                    <div className="form-group">
-                        <label>Chọn Nhà Cung Cấp (Provider):</label>
-                        <div className="provider-tabs">
-                            {(['gemini', 'grok'] as Provider[]).map(p => (
-                                <button
-                                    key={p}
-                                    className={`tab-btn small ${localSettings.provider === p ? 'active' : ''}`}
-                                    onClick={() => setLocalSettings(prev => ({ ...prev, provider: p }))}
-                                >
-                                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <hr className="divider" />
-
-                    <div className="provider-settings active-section">
-                        <h3>Cấu hình {localSettings.provider.charAt(0).toUpperCase() + localSettings.provider.slice(1)}</h3>
-                        
-                        {/* API Key Management */}
-                        <div className="api-management-section">
-                            <label style={{display: 'block', marginBottom: '8px', color: '#aaa', fontSize: '0.9rem'}}>Danh sách API Keys:</label>
-                            
-                            <div className="key-list">
-                                {currentProviderKeys.length === 0 ? (
-                                    <div className="empty-keys">Chưa có API Key nào. Vui lòng thêm mới.</div>
-                                ) : (
-                                    currentProviderKeys.map(entry => (
-                                        <div key={entry.id} className={`key-item ${entry.isActive ? 'active-key' : ''}`}>
-                                            <div className="key-info" onClick={() => handleSetActiveKey(entry.id)}>
-                                                <div className={`radio-indicator ${entry.isActive ? 'checked' : ''}`}></div>
-                                                <div className="key-text">
-                                                    <span className="key-label">{entry.label}</span>
-                                                    <span className="key-value">{maskKey(entry.key)}</span>
-                                                </div>
-                                            </div>
-                                            <button className="delete-key-btn" onClick={() => handleDeleteKey(entry.id)} title="Xóa key">
-                                                🗑️
-                                            </button>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-
-                            <div className="add-key-form">
-                                <input 
-                                    type="text" 
-                                    placeholder="Tên gợi nhớ (Ví dụ: Personal, Project A)..."
-                                    value={newKeyLabel}
-                                    onChange={(e) => setNewKeyLabel(e.target.value)}
-                                    className="key-label-input"
-                                />
-                                <div className="input-with-btn">
-                                    <input 
-                                        type="password" 
-                                        placeholder={`Nhập ${localSettings.provider} API Key mới...`}
-                                        value={newKeyInput}
-                                        onChange={(e) => setNewKeyInput(e.target.value)}
-                                        className="key-value-input"
-                                    />
-                                    <button className="btn btn-secondary add-btn" onClick={handleAddKey} disabled={!newKeyInput}>
-                                        + Thêm
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Model Selection */}
-                        <div className="form-group" style={{marginTop: '1.5rem'}}>
-                            <label>Chọn Model Mặc Định:</label>
-                            <select 
-                                value={localSettings.models[localSettings.provider]}
-                                onChange={(e) => handleModelChange(localSettings.provider, e.target.value)}
-                            >
-                                {MODEL_OPTIONS[localSettings.provider].map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="modal-footer">
-                    <button className="btn btn-secondary" onClick={onClose}>Hủy</button>
-                    <button className="btn btn-primary" onClick={() => onSave(localSettings)}>Lưu Cấu Hình</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const ImageUploader = ({ 
-    image, 
-    onImageSelect, 
-    onRemove,
-    children, 
-    isLoading = false, 
-    loadingText = '',
-    label = ''
-}: {
-    image: string | null;
-    onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onRemove?: () => void;
+// Component definitions to fix missing component errors
+const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: { 
+    label?: string; 
+    image: string | null; 
+    onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void; 
+    onRemove?: () => void; 
     children?: React.ReactNode;
-    isLoading?: boolean;
-    loadingText?: string;
-    label?: string;
 }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleAreaClick = (e: React.MouseEvent) => {
-        // Prevent trigger if clicking the remove button
-        if ((e.target as HTMLElement).closest('.remove-btn')) return;
-        if (!isLoading) {
-            fileInputRef.current?.click();
-        }
-    };
-
     return (
         <div className="uploader-wrapper">
             {label && <label className="uploader-label">{label}</label>}
-            <div className="image-upload-area" onClick={handleAreaClick} role="button" tabIndex={0} aria-label="Image upload area">
+            <div className="image-upload-area" onClick={() => document.getElementById(`file-${label || 'upload'}`)?.click()}>
                 {image ? (
-                    <>
-                        <img src={image} alt="Preview" />
-                        {onRemove && !isLoading && (
-                            <button className="remove-btn" onClick={onRemove} title="Xóa ảnh">
-                                &times;
+                    <div className="preview-container">
+                        <img src={image} alt="Upload preview" />
+                        {onRemove && (
+                            <button 
+                                className="remove-btn"
+                                onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                            >
+                                ×
                             </button>
                         )}
-                    </>
-                ) : children}
-                {isLoading && (
-                    <div className="loader-container">
-                        <div className="spinner"></div>
-                        <p>{loadingText}</p>
+                    </div>
+                ) : (
+                    <div className="placeholder-content">
+                        {children || <span style={{fontSize: '24px', color: '#555'}}>+</span>}
                     </div>
                 )}
-                <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden-file-input"
-                    ref={fileInputRef}
-                    onChange={onImageSelect}
-                    disabled={isLoading}
+                
+                <input 
+                    id={`file-${label || 'upload'}`}
+                    type="file" 
+                    accept="image/*" 
+                    onChange={onImageSelect} 
+                    className="hidden-input"
                 />
             </div>
         </div>
@@ -337,140 +45,77 @@ const ImageUploader = ({
 };
 
 const App = () => {
-    // --- API Settings State ---
-    const [apiSettings, setApiSettings] = useState<ApiSettings>(() => {
-        // Load from local storage or use default
-        const saved = localStorage.getItem('ai_studio_settings');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                
-                // MIGRATION LOGIC: Check if keys are strings (legacy format) and convert to array
-                const isLegacy = typeof parsed.keys?.gemini === 'string' || typeof parsed.keys?.openai === 'string';
-                
-                if (isLegacy) {
-                    return {
-                        ...DEFAULT_SETTINGS,
-                        provider: parsed.provider || 'gemini',
-                        keys: {
-                            gemini: parsed.keys.gemini ? [{ id: 'legacy-gemini', key: parsed.keys.gemini, label: 'Default Key', isActive: true, createdAt: Date.now() }] : [],
-                            grok: parsed.keys.grok ? [{ id: 'legacy-grok', key: parsed.keys.grok, label: 'Default Key', isActive: true, createdAt: Date.now() }] : []
-                        },
-                        models: parsed.models || DEFAULT_SETTINGS.models
-                    };
-                }
-                
-                return parsed;
-            } catch (e) {
-                return DEFAULT_SETTINGS;
-            }
-        }
-        return DEFAULT_SETTINGS;
-    });
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    // State definitions to fix missing variable errors
+    const [activeTab, setActiveTab] = useState('try-on');
+    const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
+    const [error, setError] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [finalImage, setFinalImage] = useState<string | null>(null);
 
-    // Tab State
-    const [activeTab, setActiveTab] = useState<'try-on' | 'skin-fix' | 'breast-aug'>('try-on');
+    // Skin Fix Mode State
+    const [skinFixInputImage, setSkinFixInputImage] = useState<string | null>(null);
+    const [skinFixResultImage, setSkinFixResultImage] = useState<string | null>(null);
+    const [isFixingSkin, setIsFixingSkin] = useState(false);
 
-    // --- Try-On States ---
-    const [tryOnMode, setTryOnMode] = useState<'mix' | 'full'>('full'); // 'mix' = Top/Bottom split, 'full' = One image set
+    // Full Mode State
+    const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
+    const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
+    const [modelFile, setModelFile] = useState<File | null>(null);
+    const [modelPreview, setModelPreview] = useState<string | null>(null);
     
-    // Mix Mode States - Replaced Extraction Logic with Direct Uploads
-    const [dressImage, setDressImage] = useState<string | null>(null); // Váy / Đầm nguyên bộ
+    const [fullSetOptions, setFullSetOptions] = useState({
+        clothing: true,
+        shoes: false,
+        jewelry: false,
+        bag: false
+    });
+
+    // Mix Mode State
+    const [dressImage, setDressImage] = useState<string | null>(null);
     const [topImage, setTopImage] = useState<string | null>(null);
     const [bottomImage, setBottomImage] = useState<string | null>(null);
     const [shoesImage, setShoesImage] = useState<string | null>(null);
-    const [jewelryImage, setJewelryImage] = useState<string | null>(null); // Trang sức
-    const [bagImage, setBagImage] = useState<string | null>(null); // Túi xách
-
-    // Full Set Mode States
-    const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
-    const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
+    const [jewelryImage, setJewelryImage] = useState<string | null>(null);
+    const [bagImage, setBagImage] = useState<string | null>(null);
     
-    // Full Set Granular Options
-    const [fullSetOptions, setFullSetOptions] = useState({
-        clothing: true, // Áo, quần, váy
-        shoes: true,    // Giày, dép
-        jewelry: false, // Trang sức
-        bag: false      // Túi xách
-    });
+    // Helper to keep track of files for mix mode
+    const [mixFiles, setMixFiles] = useState<{ [key: string]: File | null }>({});
 
-    // General Generation Settings (For both modes)
     const [generationSettings, setGenerationSettings] = useState({
-        changePose: false,      // Thay đổi tư thế
-        changeBackground: false, // Đổi bối cảnh
-        generateFullBody: false, // Tạo ảnh toàn thân
-        aspectRatio: '9:16' as '9:16' | '16:9' // Aspect Ratio
+        aspectRatio: '9:16',
+        changePose: false,
+        changeBackground: false,
+        generateFullBody: false
     });
 
-    // Common Try-On States
-    const [modelFile, setModelFile] = useState<File | null>(null);
-    const [modelPreview, setModelPreview] = useState<string | null>(null);
-    const [finalImage, setFinalImage] = useState<string | null>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
-
-    // --- Skin Fix States ---
-    const [skinFile, setSkinFile] = useState<File | null>(null);
-    const [skinPreview, setSkinPreview] = useState<string | null>(null);
-    const [skinResult, setSkinResult] = useState<string | null>(null);
-    const [isFixingSkin, setIsFixingSkin] = useState(false);
-
-    // --- Breast Augmentation States ---
-    const [breastAugFile, setBreastAugFile] = useState<File | null>(null);
-    const [breastAugPreview, setBreastAugPreview] = useState<string | null>(null);
-    const [breastAugResult, setBreastAugResult] = useState<string | null>(null);
-    const [isBreastAugmenting, setIsBreastAugmenting] = useState(false);
-
-    // --- Common States ---
-    const [error, setError] = useState<string | null>(null);
-    const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
-
-    // Helper to get the Active API Key String
-    const getActiveKey = (provider: Provider): string | null => {
-        const keys = apiSettings.keys[provider];
-        const activeKeyEntry = keys.find(k => k.isActive);
-        return activeKeyEntry ? activeKeyEntry.key : null;
-    };
-
-    // Handle Settings Save
-    const handleSaveSettings = (newSettings: ApiSettings) => {
-        setApiSettings(newSettings);
-        localStorage.setItem('ai_studio_settings', JSON.stringify(newSettings));
-        setIsSettingsOpen(false);
-        setError(null); // Clear errors
-    };
-
-    // Helper to check provider validity
-    const checkProviderReady = () => {
-        const activeKey = getActiveKey(apiSettings.provider);
-        if (!activeKey) {
-            setError(`Vui lòng thêm và kích hoạt API Key cho ${apiSettings.provider.toUpperCase()} trong phần Cài đặt.`);
-            setIsSettingsOpen(true);
-            return false;
-        }
-        return true;
-    };
-
-    const handleTabChange = (tab: 'try-on' | 'skin-fix' | 'breast-aug') => {
-        setActiveTab(tab);
-        setError(null);
-        setIsDownloadMenuOpen(false);
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (file: File | null) => void, setPreview: (url: string | null) => void) => {
-        const file = e.target.files?.[0];
-        if (file) {
+    // Handlers
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
             setFile(file);
             setPreview(URL.createObjectURL(file));
-            setError(null);
         }
     };
 
-    const handleDirectGarmentUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'dress' | 'top' | 'bottom' | 'shoes' | 'jewelry' | 'bag') => {
-        const file = e.target.files?.[0];
-        if (file) {
+    const toggleFullSetOption = (key: keyof typeof fullSetOptions) => {
+        setFullSetOptions(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const setAspectRatio = (ratio: string) => {
+        setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
+    };
+
+    const toggleGenerationSetting = (key: keyof typeof generationSettings) => {
+        setGenerationSettings(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const handleDirectGarmentUpload = (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
             const url = URL.createObjectURL(file);
-            switch (type) {
+            setMixFiles(prev => ({ ...prev, [type]: file }));
+            
+            switch(type) {
                 case 'dress': setDressImage(url); break;
                 case 'top': setTopImage(url); break;
                 case 'bottom': setBottomImage(url); break;
@@ -478,12 +123,12 @@ const App = () => {
                 case 'jewelry': setJewelryImage(url); break;
                 case 'bag': setBagImage(url); break;
             }
-            setError(null);
         }
     };
 
-    const handleRemoveGarment = (type: 'dress' | 'top' | 'bottom' | 'shoes' | 'jewelry' | 'bag') => {
-        switch (type) {
+    const handleRemoveGarment = (type: string) => {
+        setMixFiles(prev => ({ ...prev, [type]: null }));
+        switch(type) {
             case 'dress': setDressImage(null); break;
             case 'top': setTopImage(null); break;
             case 'bottom': setBottomImage(null); break;
@@ -493,637 +138,444 @@ const App = () => {
         }
     };
 
-    const toggleFullSetOption = (option: keyof typeof fullSetOptions) => {
-        setFullSetOptions(prev => ({
-            ...prev,
-            [option]: !prev[option]
-        }));
-    };
-
-    const toggleGenerationSetting = (option: keyof typeof generationSettings) => {
-        if (option === 'aspectRatio') return; // Handled separately
-        setGenerationSettings(prev => ({
-            ...prev,
-            [option]: !prev[option as keyof typeof prev]
-        }));
-    };
-
-    const setAspectRatio = (ratio: '9:16' | '16:9') => {
-        setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                if (typeof reader.result === 'string') {
+                    // Extract base64 data only
+                    resolve(reader.result.split(',')[1]);
+                } else {
+                    reject(new Error("Failed to read file"));
+                }
+            };
+            reader.onerror = error => reject(error);
+        });
     };
 
     const handleGenerateTryOn = async () => {
-        if (!checkProviderReady()) return;
-
-        if (!modelFile) {
-            setError('Vui lòng tải ảnh người mẫu.');
-            return;
-        }
-
-        const hasMixItems = dressImage || topImage || bottomImage || shoesImage || jewelryImage || bagImage;
-        if (tryOnMode === 'mix' && !hasMixItems) {
-            setError('Vui lòng chọn ít nhất một món đồ để thay.');
-            return;
-        }
-
-        if (tryOnMode === 'full' && !fullOutfitFile) {
-            setError('Vui lòng tải ảnh set đồ.');
+        if (!process.env.API_KEY) {
+            setError("API Key is missing in environment variables.");
             return;
         }
 
         setIsGenerating(true);
-        setError(null);
         setFinalImage(null);
+        setError(null);
 
         try {
-            // Use configured provider
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
-            const ai = new GoogleGenAI({ apiKey: activeKey! });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image'; 
             
             const parts: any[] = [];
-            let imageIndex = 1;
-            let referenceMap = "";
-
-            // --- BUILD PROMPT STRATEGY ---
             
+            // Add Model Image
+            if (modelFile) {
+                const modelB64 = await fileToBase64(modelFile);
+                parts.push({
+                    inlineData: {
+                        mimeType: modelFile.type,
+                        data: modelB64
+                    }
+                });
+                parts.push({ text: "This is the model." });
+            }
+
+            // Add Garment Images
             if (tryOnMode === 'full' && fullOutfitFile) {
-                const outfitPart = await fileToGenerativePart(fullOutfitFile);
-                parts.push(outfitPart);
-                referenceMap += `- Image ${imageIndex}: SOURCE REFERENCE OUTFIT (Contains the clothes to transfer).\n`;
-                imageIndex++;
+                const outfitB64 = await fileToBase64(fullOutfitFile);
+                parts.push({
+                    inlineData: {
+                        mimeType: fullOutfitFile.type,
+                        data: outfitB64
+                    }
+                });
+                parts.push({ text: "This is the outfit to try on." });
             } else if (tryOnMode === 'mix') {
-                // Determine Main Outfit Logic
-                if (dressImage) {
-                    const part = await urlToGenerativePart(dressImage);
-                    parts.push(part);
-                    referenceMap += `- Image ${imageIndex}: SOURCE ONE-PIECE DRESS/FULL BODY SUIT. This replaces the entire main outfit.\n`;
-                    imageIndex++;
-                } else {
-                    if (topImage) {
-                        const part = await urlToGenerativePart(topImage);
-                        parts.push(part);
-                        referenceMap += `- Image ${imageIndex}: SOURCE TOP GARMENT (Shirt/Jacket/Blouse).\n`;
-                        imageIndex++;
+                for (const [key, file] of Object.entries(mixFiles)) {
+                    if (file) {
+                        const f = file as File;
+                        const b64 = await fileToBase64(f);
+                        parts.push({
+                            inlineData: {
+                                mimeType: f.type,
+                                data: b64
+                            }
+                        });
+                        parts.push({ text: `This is the ${key}.` });
                     }
-                    if (bottomImage) {
-                        const part = await urlToGenerativePart(bottomImage);
-                        parts.push(part);
-                        referenceMap += `- Image ${imageIndex}: SOURCE BOTTOM GARMENT (Pants/Skirt/Shorts).\n`;
-                        imageIndex++;
-                    }
-                }
-
-                // Accessories
-                if (shoesImage) {
-                    const part = await urlToGenerativePart(shoesImage);
-                    parts.push(part);
-                    referenceMap += `- Image ${imageIndex}: SOURCE FOOTWEAR (Shoes/Heels/Sneakers).\n`;
-                    imageIndex++;
-                }
-                if (jewelryImage) {
-                    const part = await urlToGenerativePart(jewelryImage);
-                    parts.push(part);
-                    referenceMap += `- Image ${imageIndex}: SOURCE JEWELRY/ACCESSORIES.\n`;
-                    imageIndex++;
-                }
-                if (bagImage) {
-                    const part = await urlToGenerativePart(bagImage);
-                    parts.push(part);
-                    referenceMap += `- Image ${imageIndex}: SOURCE BAG/HANDBAG.\n`;
-                    imageIndex++;
                 }
             }
 
-            // Add Model Image Last
-            const modelPart = await fileToGenerativePart(modelFile);
-            parts.push(modelPart);
-            referenceMap += `- Image ${imageIndex}: TARGET MODEL (The person to dress).\n`;
-
-            // --- ADVANCED PROMPT ENGINEERING ---
-            let instructions = `
-            ROLE: You are an advanced AI Texture Transfer and Virtual Try-On Engine.
-            TASK: Photorealistic Garment Transfer.
-
-            INPUT MAP:
-            ${referenceMap}
-
-            OBJECTIVE:
-            Transfer the clothing items from the SOURCE image(s) onto the TARGET MODEL in the last image.
+            // Prompt Construction
+            let prompt = "Generate a photorealistic image of the model wearing the provided garments.";
             
-            CRITICAL RULES FOR ACCURACY (STRICT ENFORCEMENT):
-            1. **TEXTURE FIDELITY:** You must perform a "texture transfer" operation. Do not re-imagine the clothes. COPY the exact fabric pattern, logo, print, material texture, and stitching details from the Source Image(s) and warp them onto the Target Model.
-            2. **COLOR ACCURACY:** The color of the output clothes MUST match the Source Image exactly. Do not shift colors due to lighting.
-            3. **PHYSICAL FIT:** The clothes must wrap around the Target Model's body volumetrically. Respect the model's body shape and pose. Create realistic fabric folds, wrinkles, and shadows where the cloth bends.
-            4. **REMOVAL:** Completely remove the Target Model's original clothes in the areas where new clothes are applied. Replace them seamlessly.
-            5. **LAYERING:** If both Top and Bottom are provided, tuck the top in or leave it out based on the style shown in the source images. If a Dress is provided, it covers both upper and lower body.
-            
-            SPECIFIC INSTRUCTIONS:
-            `;
-
             if (tryOnMode === 'full') {
-                 // Build granular target list for Full Mode
-                const targets = [];
-                if (fullSetOptions.clothing) targets.push("Main Outfit (Top & Bottom/Dress)");
-                if (fullSetOptions.shoes) targets.push("Footwear");
-                if (fullSetOptions.jewelry) targets.push("Jewelry/Accessories");
-                if (fullSetOptions.bag) targets.push("Bags/Handbags");
-
-                instructions += `
-                - SOURCE TYPE: Full Outfit Reference.
-                - ITEMS TO TRANSFER: ${targets.join(', ')}.
-                - IGNORE other items in the source image unless listed above.
-                - If the Source Image is a flat lay or mannequin, identify the garment boundaries precisely and map them to the human form of the Target Model.
-                `;
+                const activeOptions = Object.entries(fullSetOptions)
+                    .filter(([_, active]) => active)
+                    .map(([key]) => key);
+                if (activeOptions.length > 0) {
+                    prompt += ` Specifically replace the ${activeOptions.join(', ')} on the model with the ones from the outfit image.`;
+                } else {
+                    prompt += " Replace the outfit on the model with the provided outfit.";
+                }
             } else {
-                instructions += `
-                - SOURCE TYPE: Mix & Match Individual Items.
-                - Composite the provided specific items onto the Target Model.
-                - If a Dress is provided, ignore existing Top/Bottom on the model.
-                - If Top/Bottom are provided, replace respective areas.
-                - If Accessories (Shoes/Jewelry/Bag) are provided, add them naturally.
-                `;
+                prompt += " Mix and match the provided individual garments onto the model naturally.";
             }
 
-            // Add Settings Instructions
-            instructions += `
-            \nADDITIONAL CONFIGURATION:
-            - POSE: ${generationSettings.changePose ? "CHANGE the model's pose to showcase the outfit better. Make it dynamic." : "KEEP the model's original pose exactly as is."}
-            - BACKGROUND: ${generationSettings.changeBackground ? "REPLACE the background with a high-quality, fitting environment." : "KEEP the original background exactly as is."}
-            - FRAMING: ${generationSettings.generateFullBody ? "GENERATE A FULL BODY shot. Extrapolate legs/shoes if cropped." : "KEEP the original image cropping/framing."}
-            
-            OUTPUT QUALITY:
-            - High Dynamic Range (HDR).
-            - Sharp textures.
-            - No artifacts or ghosting around edges.
-            - Photorealistic lighting matching the environment.
-            `;
+            if (generationSettings.changePose) prompt += " Change the pose of the model.";
+            if (generationSettings.changeBackground) prompt += " Change the background.";
+            if (generationSettings.generateFullBody) prompt += " Ensure the full body is visible.";
+            prompt += ` Aspect ratio should be ${generationSettings.aspectRatio}.`;
+
+            parts.push({ text: prompt });
 
             const response = await ai.models.generateContent({
-                model: selectedModel,
-                contents: { parts: [...parts, { text: instructions }] },
-                config: { 
-                    responseModalities: [Modality.IMAGE],
-                    imageConfig: {
-                        aspectRatio: generationSettings.aspectRatio
-                    }
-                },
+                model: modelName,
+                contents: { parts: parts },
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setFinalImage(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
-            } else {
-                throw new Error("AI không thể tạo ảnh. Vui lòng thử lại hoặc đổi Model.");
+            // Handle response
+            let foundImage = false;
+            if (response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        setFinalImage(imageUrl);
+                        foundImage = true;
+                    }
+                }
             }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Lỗi ghép đồ.');
+
+            if (!foundImage && response.text) {
+                 console.log("Response text:", response.text);
+                 if (!foundImage) setError("AI trả về phản hồi dạng văn bản thay vì ảnh. Vui lòng thử lại.");
+            }
+
+        } catch (err: any) {
+            console.error("Generation error:", err);
+            setError("Failed to generate image: " + err.message);
         } finally {
             setIsGenerating(false);
         }
     };
 
-    const handleFixSkin = async () => {
-        if (!checkProviderReady()) return;
-
-        if (!skinFile) {
-            setError('Vui lòng tải ảnh cần xử lý.');
-            return;
-        }
-
+    const handleTransferToSkinFix = async (imageSrc: string) => {
+        setSkinFixInputImage(imageSrc);
+        setSkinFixResultImage(null);
+        setActiveTab('fix-skin');
         setIsFixingSkin(true);
         setError(null);
-        setSkinResult(null);
 
         try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
-            const ai = new GoogleGenAI({ apiKey: activeKey! });
-            
-            const imagePart = await fileToGenerativePart(skinFile);
-            // Prompt kỹ thuật cao dựa trên cơ chế 9 bước
-            const prompt = `
-            ACT AS: A high-end dedicated image restoration engine specialized in "Anti-Plastic Skin" processing and physical skin texture reconstruction.
+            if (!process.env.API_KEY) throw new Error("Missing API Key");
 
-            INPUT ANALYSIS & EXECUTION PIPELINE:
-            1.  **Semantic Face Parsing:** Identify facial regions (cheeks, forehead, chin) vs. sensitive features (eyes, lips, eyebrows, hair). Lock the identity embedding of the original face.
-            2.  **Plasticity Detection:** Scan for areas with unnatural high-frequency loss (over-smoothed, wax-like, airbrushed look).
-            3.  **Micro-Texture Synthesis:** Generate conditioned skin texture based on the subject's estimated age and gender. Add natural pores, micro-wrinkles, and subtle skin irregularities.
-            4.  **Lighting & Subsurface Scattering:** Fix flat, oily specular highlights. Simulate light penetrating the skin layers (subsurface scattering) to create depth. Increase micro-contrast in shadows.
-            5.  **Post-Processing:** Blend the new texture seamlessly. Add subtle film grain to match a high-quality optical camera sensor.
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image'; 
 
-            STRICT CONSTRAINTS (Identity Preservation):
-            - PRESERVE the original facial geometry (nose shape, jawline, eye distance) EXACTLY.
-            - PRESERVE the original expression and gaze.
-            - DO NOT perform "beautification" or aesthetic fixes.
-            - DO NOT change the age or make the subject look younger.
-            - DO NOT produce a CGI or 3D render look.
+            const base64Data = imageSrc.split(',')[1];
+            const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
 
-            MISSION:
-            Restore realistic human skin texture. Remove over-smoothing artifacts. Add subtle natural pores, micro skin variations. Preserve original facial identity, geometry, expression.
-            Negative prompt logic: "wax skin", "airbrushed", "beauty filter", "CGI look", "blur", "perfect skin".
-
-            OUTPUT:
-            A hyper-realistic photograph where the subject looks human, not plastic.
-            `;
+            const parts = [
+                {
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: base64Data
+                    }
+                },
+                { text: "Enhance the skin texture of the person in this image to look more photorealistic and natural. Remove any plastic-like smoothing or artificial blur. Add realistic skin pores and texture details. Keep the outfit, background, and identity exactly the same. Output high quality image." }
+            ];
 
             const response = await ai.models.generateContent({
-                model: selectedModel,
-                contents: {
-                    parts: [imagePart, { text: prompt }],
-                },
-                config: { responseModalities: [Modality.IMAGE] },
+                model: modelName,
+                contents: { parts: parts },
             });
 
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setSkinResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
-            } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
+            let foundImage = false;
+            if (response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        setSkinFixResultImage(imageUrl);
+                        foundImage = true;
+                    }
+                }
             }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Lỗi xử lý ảnh.');
+             if (!foundImage) {
+                 setError("Không thể xử lý ảnh. Vui lòng thử lại.");
+             }
+
+        } catch (e: any) {
+            console.error(e);
+            setError("Lỗi khi xử lý da: " + e.message);
         } finally {
             setIsFixingSkin(false);
         }
     };
 
-    const handleBreastAugmentation = async () => {
-        if (!checkProviderReady()) return;
-
-        if (!breastAugFile) {
-            setError('Vui lòng tải ảnh nhân vật.');
-            return;
-        }
-
-        setIsBreastAugmenting(true);
-        setError(null);
-        setBreastAugResult(null);
-
-        try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const selectedModel = apiSettings.models[apiSettings.provider];
-            const ai = new GoogleGenAI({ apiKey: activeKey! });
-            
-            const imagePart = await fileToGenerativePart(breastAugFile);
-            const prompt = `
-            ACT AS: Professional Photo Retoucher specializing in body aesthetics and natural enhancement.
-            TASK: Naturally enhance the breast size and firmness of the person in the image.
-
-            INSTRUCTIONS:
-            1.  **Volumetric Enhancement:** Increase the breast volume to look fuller, rounder, and more lifted (approximately 1-2 cup sizes larger, or what is proportionally attractive for the body type).
-            2.  **Natural Shape & Gravity:** Ensure the shape follows natural physics. They should look firm and perky but not like rigid plastic spheres.
-            3.  **Clothing Adaptation:** Accurately adjust the clothing to fit the new volume. Create realistic fabric tension, stretch marks on fabric, and shadow casting based on the new contours.
-            4.  **Cleavage & Shadowing:** Enhance the cleavage depth and lighting naturally if visible.
-
-            STRICT CONSTRAINTS (Identity & Scene Preservation):
-            - **IDENTITY LOCK:** The face, hair, makeup, expression, and skin tone MUST remain 100% IDENTICAL to the original.
-            - **BACKGROUND LOCK:** Do not change or warp the background.
-            - **STYLE LOCK:** Keep the original clothing style, color, and texture. Only the fit changes.
-            - **REALISM:** The result must be photorealistic, matching the lighting and grain of the original photo. No cartoon/anime style unless the input is such.
-
-            OUTPUT:
-            A high-quality, photorealistic image with the requested enhancement.
-            `;
-
-            const response = await ai.models.generateContent({
-                model: selectedModel,
-                contents: {
-                    parts: [imagePart, { text: prompt }],
-                },
-                config: { responseModalities: [Modality.IMAGE] },
-            });
-
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                setBreastAugResult(`data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`);
-            } else {
-                throw new Error("Không thể xử lý ảnh. Vui lòng thử lại với ảnh khác.");
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Lỗi xử lý ảnh.');
-        } finally {
-            setIsBreastAugmenting(false);
-        }
-    };
-
-    const handleDownload = (imageUrl: string | null, filenamePrefix: string, quality: 'original' | 'hd' | '2k' | '4k') => {
-        if (!imageUrl) return;
-        setIsDownloadMenuOpen(false);
-        
-        // Tạo hậu tố thời gian: YYYYMMDDHHmmss
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-
-        const resolutions = { hd: 1920, '2k': 2560, '4k': 3840 };
-        const triggerDownload = (href: string, filename: string) => {
-            const link = document.createElement('a');
-            link.href = href;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        if (quality === 'original') {
-            triggerDownload(imageUrl, `${filenamePrefix}-${quality}-${timestamp}.png`);
-            return;
-        }
-
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return;
-            const target = resolutions[quality];
-            const ratio = img.width / img.height;
-            canvas.width = img.width >= img.height ? target : target * ratio;
-            canvas.height = img.width >= img.height ? target / ratio : target;
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            triggerDownload(canvas.toDataURL('image/png'), `${filenamePrefix}-${quality}-${timestamp}.png`);
-        };
-        img.src = imageUrl;
-    };
-
     return (
-        <>
-            <header className="app-header">
-                <h1>AI Studio VIP</h1>
-                <p>Bộ công cụ xử lý ảnh chuyên nghiệp</p>
-                <button 
-                    className="btn btn-secondary" 
-                    style={{ width: 'auto', padding: '8px 16px', marginTop: '10px', fontSize: '0.9rem' }}
-                    onClick={() => setIsSettingsOpen(true)}
-                >
-                    ⚙️ Cài đặt AI
-                </button>
+        <div className="container">
+            {/* --- RESTORED HEADER --- */}
+            <header className="main-header">
+                <h1 className="app-title">AI Studio VIP</h1>
+                <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
+                <div style={{marginBottom: '20px'}}>
+                    <button className="settings-btn">⚙️ Cài đặt AI</button>
+                </div>
+                
+                <nav className="main-nav">
+                    <button 
+                        className={`nav-item ${activeTab === 'try-on' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('try-on')}
+                    >
+                        👗 Virtual Try-On
+                    </button>
+                    <button 
+                        className={`nav-item ${activeTab === 'fix-skin' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('fix-skin')}
+                    >
+                        ✨ Fix Da Nhựa
+                    </button>
+                    <button 
+                        className={`nav-item special-item ${activeTab === 'breast-lift' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('breast-lift')}
+                    >
+                        👙 AI Nâng Ngực
+                    </button>
+                </nav>
             </header>
 
-            <SettingsModal 
-                isOpen={isSettingsOpen} 
-                onClose={() => setIsSettingsOpen(false)} 
-                settings={apiSettings} 
-                onSave={handleSaveSettings} 
-            />
+             {error && <div className="error-message">{error}</div>}
+             
+             {activeTab === 'try-on' && (
+                <>
+                    {/* Global Mode Switcher for Try-On */}
+                    <div className="mode-switcher-container">
+                        <button 
+                            className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => { setTryOnMode('full'); setError(null); }}
+                        >
+                            ✨ Full Set (Nguyên Bộ)
+                        </button>
+                        <button 
+                            className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`}
+                            onClick={() => { setTryOnMode('mix'); setError(null); }}
+                        >
+                            🧩 Mix & Match (Lẻ)
+                        </button>
+                    </div>
 
-            <div className="tab-navigation">
-                <button 
-                    className={`tab-btn ${activeTab === 'try-on' ? 'active' : ''}`}
-                    onClick={() => handleTabChange('try-on')}
-                >
-                    👗 Virtual Try-On
-                </button>
-                <button 
-                    className={`tab-btn ${activeTab === 'skin-fix' ? 'active' : ''}`}
-                    onClick={() => handleTabChange('skin-fix')}
-                >
-                    ✨ Fix Da Nhựa
-                </button>
-                <button 
-                    className={`tab-btn ${activeTab === 'breast-aug' ? 'active' : ''}`}
-                    onClick={() => handleTabChange('breast-aug')}
-                >
-                    👙 AI Nâng Ngực
-                </button>
-            </div>
-
-            {error && <div className="error-message">{error}</div>}
-
-            {activeTab === 'try-on' && (
-                <main className="workflow-container">
-                    {/* Step 1: Manage Garments & Data */}
-                    <section className="step-card full-width">
-                        <h2>
-                            <span className="step-number">1</span> 
-                            {tryOnMode === 'full' ? 'Cấu hình & Dữ liệu' : 'Chọn Đồ Mix & Match'}
-                        </h2>
-                        
-                        {/* Mode Switcher */}
-                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-                            <button 
-                                className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => { setTryOnMode('full'); setError(null); }}
-                            >
-                                ✨ Full Set (Nguyên Bộ)
-                            </button>
-                            <button 
-                                className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => { setTryOnMode('mix'); setError(null); }}
-                            >
-                                🧩 Mix & Match (Lẻ)
-                            </button>
-                        </div>
-
-                        <div className="garment-source-container" style={tryOnMode === 'full' ? {display: 'block'} : {}}>
-                            {tryOnMode === 'full' ? (
-                                <div className="full-mode-container">
-                                    {/* 1. Images Row: Outfit + Model Side by Side */}
-                                    <div className="dual-upload-container">
-                                        <div className="upload-box">
-                                            <ImageUploader
-                                                label="1. Ảnh Set Đồ (Quần + Áo + Phụ Kiện...)"
-                                                image={fullOutfitPreview}
-                                                onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
-                                                onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
-                                            >
-                                                <p>Tải ảnh chứa nguyên set đồ<br/>(AI sẽ lấy cả giày, trang sức nếu có)</p>
-                                            </ImageUploader>
-                                        </div>
-                                        <div className="upload-box">
-                                            <ImageUploader
-                                                label="2. Ảnh Người Mẫu (Model)"
-                                                image={modelPreview}
-                                                onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                                                onRemove={() => { setModelFile(null); setModelPreview(null); }}
-                                            >
-                                                <p>+ Tải ảnh người mẫu</p>
-                                            </ImageUploader>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* 2. Settings Row: Items + Advanced (Below Images) */}
-                                    <div className="settings-panel">
-                                        <div className="settings-columns">
-                                            {/* Item Selection Group */}
-                                            <div className="settings-card">
-                                                <div className="settings-card-header">
-                                                    <label>3. Chọn mục cần thay:</label>
+                    <main className="workflow-container">
+                        {tryOnMode === 'full' ? (
+                            /* --- FULL MODE LAYOUT --- */
+                            <>
+                                <section className="step-card full-width">
+                                    <h2><span className="step-number">1</span> Cấu hình & Dữ liệu</h2>
+                                    <div className="garment-source-container">
+                                        <div className="full-mode-container">
+                                            {/* 1. Images Row: Outfit + Model Side by Side */}
+                                            <div className="dual-upload-container">
+                                                <div className="upload-box">
+                                                    <ImageUploader
+                                                        label="1. Ảnh Set Đồ"
+                                                        image={fullOutfitPreview}
+                                                        onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
+                                                        onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
+                                                    >
+                                                        <p>Tải ảnh chứa nguyên set đồ</p>
+                                                    </ImageUploader>
                                                 </div>
-                                                <div className="settings-card-body">
-                                                    <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
-                                                        <button 
-                                                            className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
-                                                            onClick={() => toggleFullSetOption('clothing')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>👗 Quần/Áo/Váy</span>
-                                                            {fullSetOptions.clothing && <span>✓</span>}
-                                                        </button>
-                                                        <button 
-                                                            className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`}
-                                                            onClick={() => toggleFullSetOption('shoes')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>👠 Giày/Dép</span>
-                                                            {fullSetOptions.shoes && <span>✓</span>}
-                                                        </button>
-                                                        <button 
-                                                            className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`}
-                                                            onClick={() => toggleFullSetOption('jewelry')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>💎 Trang sức</span>
-                                                            {fullSetOptions.jewelry && <span>✓</span>}
-                                                        </button>
-                                                        <button 
-                                                            className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`}
-                                                            onClick={() => toggleFullSetOption('bag')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>👜 Túi xách</span>
-                                                            {fullSetOptions.bag && <span>✓</span>}
-                                                        </button>
-                                                    </div>
+                                                <div className="upload-box">
+                                                    <ImageUploader
+                                                        label="2. Ảnh Người Mẫu"
+                                                        image={modelPreview}
+                                                        onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
+                                                        onRemove={() => { setModelFile(null); setModelPreview(null); }}
+                                                    >
+                                                        <p>Tải ảnh người mẫu</p>
+                                                    </ImageUploader>
                                                 </div>
                                             </div>
-
-                                            {/* Advanced Settings Group */}
-                                            <div className="settings-card">
-                                                <div className="settings-card-header">
-                                                    <label>4. Cài đặt tạo ảnh:</label>
-                                                </div>
-                                                <div className="settings-card-body">
-                                                    <div className="option-toggles" style={{ flexDirection: 'column', gap: '10px' }}>
-                                                        {/* Aspect Ratio Selection */}
-                                                        <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', marginBottom: '4px'}}>
-                                                            <button 
-                                                                className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                                onClick={() => setAspectRatio('9:16')}
-                                                                style={{ flex: 1, justifyContent: 'center' }}
-                                                            >
-                                                                📱 Dọc (9:16)
-                                                            </button>
-                                                            <button 
-                                                                className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                                onClick={() => setAspectRatio('16:9')}
-                                                                style={{ flex: 1, justifyContent: 'center' }}
-                                                            >
-                                                                💻 Ngang (16:9)
-                                                            </button>
+                                            
+                                            {/* 2. Settings Row */}
+                                            <div className="settings-panel">
+                                                <div className="settings-columns">
+                                                    {/* Item Selection Group */}
+                                                    <div className="settings-card">
+                                                        <div className="settings-card-header">
+                                                            <label>3. Chọn mục cần thay:</label>
                                                         </div>
+                                                        <div className="settings-card-body">
+                                                            <div className="option-toggles-list">
+                                                                <button 
+                                                                    className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
+                                                                    onClick={() => toggleFullSetOption('clothing')}
+                                                                >
+                                                                    <span>👗 Quần/Áo/Váy</span>
+                                                                    {fullSetOptions.clothing && <span>✓</span>}
+                                                                </button>
+                                                                <button 
+                                                                    className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`}
+                                                                    onClick={() => toggleFullSetOption('shoes')}
+                                                                >
+                                                                    <span>👠 Giày/Dép</span>
+                                                                    {fullSetOptions.shoes && <span>✓</span>}
+                                                                </button>
+                                                                <button 
+                                                                    className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`}
+                                                                    onClick={() => toggleFullSetOption('jewelry')}
+                                                                >
+                                                                    <span>💎 Trang sức</span>
+                                                                    {fullSetOptions.jewelry && <span>✓</span>}
+                                                                </button>
+                                                                <button 
+                                                                    className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`}
+                                                                    onClick={() => toggleFullSetOption('bag')}
+                                                                >
+                                                                    <span>👜 Túi xách</span>
+                                                                    {fullSetOptions.bag && <span>✓</span>}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
 
-                                                        <button 
-                                                            className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                            onClick={() => toggleGenerationSetting('changePose')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>💃 Thay đổi tư thế</span>
-                                                            {generationSettings.changePose && <span>✓</span>}
-                                                        </button>
-                                                        <button 
-                                                            className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                            onClick={() => toggleGenerationSetting('changeBackground')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>🏞️ Đổi bối cảnh</span>
-                                                            {generationSettings.changeBackground && <span>✓</span>}
-                                                        </button>
-                                                        <button 
-                                                            className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                            onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                            style={{ padding: '12px', fontSize: '0.95rem', textAlign: 'left', display: 'flex', justifyContent: 'space-between' }}
-                                                        >
-                                                            <span>🧍 Tạo ảnh toàn thân</span>
-                                                            {generationSettings.generateFullBody && <span>✓</span>}
-                                                        </button>
+                                                    {/* Advanced Settings Group */}
+                                                    <div className="settings-card">
+                                                        <div className="settings-card-header">
+                                                            <label>4. Cài đặt tạo ảnh:</label>
+                                                        </div>
+                                                        <div className="settings-card-body">
+                                                            <div className="option-toggles-list">
+                                                                <div className="aspect-ratio-selector">
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                                        onClick={() => setAspectRatio('9:16')}
+                                                                    >
+                                                                        📱 Dọc (9:16)
+                                                                    </button>
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                                        onClick={() => setAspectRatio('16:9')}
+                                                                    >
+                                                                        💻 Ngang (16:9)
+                                                                    </button>
+                                                                </div>
+
+                                                                <button 
+                                                                    className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                                    onClick={() => toggleGenerationSetting('changePose')}
+                                                                >
+                                                                    <span>💃 Thay đổi tư thế</span>
+                                                                    {generationSettings.changePose && <span>✓</span>}
+                                                                </button>
+                                                                <button 
+                                                                    className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                                    onClick={() => toggleGenerationSetting('changeBackground')}
+                                                                >
+                                                                    <span>🏞️ Đổi bối cảnh</span>
+                                                                    {generationSettings.changeBackground && <span>✓</span>}
+                                                                </button>
+                                                                <button 
+                                                                    className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                                                    onClick={() => toggleGenerationSetting('generateFullBody')}
+                                                                >
+                                                                    <span>🧍 Tạo ảnh toàn thân</span>
+                                                                    {generationSettings.generateFullBody && <span>✓</span>}
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            ) : (
-                                <>
-                                    {/* NEW MIX MODE UI - NO EXTRACTION */}
-                                    <div className="mix-mode-grid" style={{ gridColumn: '1 / -1' }}>
-                                        <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '0.9rem' }}>
-                                            Tải lên các món đồ bạn muốn mặc cho người mẫu. Bạn có thể chọn váy nguyên bộ, hoặc phối áo và quần riêng lẻ.
+                                </section>
+                            </>
+                        ) : (
+                            /* --- MIX MODE LAYOUT (Reordered) --- */
+                            <>
+                                {/* Step 1: Model (Moved to Top) */}
+                                <section className="step-card full-width">
+                                    <h2><span className="step-number">1</span> Ảnh Người Mẫu</h2>
+                                    <div className="model-upload-center">
+                                        <ImageUploader
+                                            image={modelPreview}
+                                            onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
+                                        >
+                                            <p>+ Tải ảnh người mẫu</p>
+                                        </ImageUploader>
+                                    </div>
+                                </section>
+
+                                {/* Step 2: Items (Smaller Grid) */}
+                                <section className="step-card full-width">
+                                    <h2><span className="step-number">2</span> Chọn Đồ Mix & Match</h2>
+                                    <div className="mix-mode-grid">
+                                        <p className="section-desc">
+                                            Tải lên các món đồ riêng lẻ bạn muốn mặc cho người mẫu.
                                         </p>
                                         
-                                        <div className="extracted-items" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+                                        <div className="extracted-items">
                                             {/* Row 1: Main Clothes */}
                                             <ImageUploader
-                                                label="👗 Váy / Đầm (Nguyên bộ)"
+                                                label="👗 Váy (Bộ)"
                                                 image={dressImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'dress')}
                                                 onRemove={() => handleRemoveGarment('dress')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Thay toàn bộ trang phục</p>
-                                            </ImageUploader>
+                                            />
 
                                             <ImageUploader
-                                                label="👚 Áo (Top)"
+                                                label="👚 Áo"
                                                 image={topImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'top')}
                                                 onRemove={() => handleRemoveGarment('top')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Áo thun, sơ mi, khoác...</p>
-                                            </ImageUploader>
+                                            />
 
                                             <ImageUploader
-                                                label="👖 Quần / Váy ngắn (Bottom)"
+                                                label="👖 Quần/Váy"
                                                 image={bottomImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'bottom')}
                                                 onRemove={() => handleRemoveGarment('bottom')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Quần jean, chân váy...</p>
-                                            </ImageUploader>
+                                            />
 
                                             {/* Row 2: Accessories */}
                                             <ImageUploader
-                                                label="👠 Giày / Dép"
+                                                label="👠 Giày"
                                                 image={shoesImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'shoes')}
                                                 onRemove={() => handleRemoveGarment('shoes')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Giày cao gót, sneaker...</p>
-                                            </ImageUploader>
+                                            />
 
                                             <ImageUploader
-                                                label="💎 Trang sức / Phụ kiện"
+                                                label="💎 Trang sức"
                                                 image={jewelryImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'jewelry')}
                                                 onRemove={() => handleRemoveGarment('jewelry')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Dây chuyền, bông tai...</p>
-                                            </ImageUploader>
+                                            />
 
                                             <ImageUploader
-                                                label="👜 Túi xách"
+                                                label="👜 Túi"
                                                 image={bagImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'bag')}
                                                 onRemove={() => handleRemoveGarment('bag')}
-                                            >
-                                                <p style={{fontSize: '0.8rem'}}>Túi xách tay, đeo chéo...</p>
-                                            </ImageUploader>
+                                            />
                                         </div>
 
                                         {/* Mix Mode Advanced Options */}
-                                        <div className="mix-mode-options" style={{ marginTop: '1.5rem', background: '#1e1e1e', padding: '1rem', borderRadius: '12px', border: '1px solid #333' }}>
+                                        <div className="mix-mode-options">
                                             <label className="uploader-label" style={{marginBottom: '0.8rem', display: 'block'}}>Cài đặt nâng cao:</label>
-                                            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                                                 <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', flex: '1 1 100%', marginBottom: '10px'}}>
+                                            <div className="mix-mode-actions">
+                                                 <div className="aspect-ratio-selector">
                                                     <button 
                                                         className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
                                                         onClick={() => setAspectRatio('9:16')}
-                                                        style={{ flex: 1, justifyContent: 'center' }}
                                                     >
                                                         📱 Dọc (9:16)
                                                     </button>
                                                     <button 
                                                         className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
                                                         onClick={() => setAspectRatio('16:9')}
-                                                        style={{ flex: 1, justifyContent: 'center' }}
                                                     >
                                                         💻 Ngang (16:9)
                                                     </button>
@@ -1132,264 +584,168 @@ const App = () => {
                                                 <button 
                                                     className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
                                                     onClick={() => toggleGenerationSetting('changePose')}
-                                                    style={{ flex: '1 1 30%', justifyContent: 'center' }}
                                                 >
                                                     💃 Thay đổi tư thế
                                                 </button>
                                                 <button 
                                                     className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
                                                     onClick={() => toggleGenerationSetting('changeBackground')}
-                                                    style={{ flex: '1 1 30%', justifyContent: 'center' }}
                                                 >
                                                     🏞️ Đổi bối cảnh
                                                 </button>
                                                 <button 
                                                     className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
                                                     onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                    style={{ flex: '1 1 30%', justifyContent: 'center' }}
                                                 >
                                                     🧍 Tạo ảnh toàn thân
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
-                                </>
-                            )}
-                        </div>
-                    </section>
+                                </section>
+                            </>
+                        )}
 
-                    {/* Step 2: Model (Only for Mix Mode) */}
-                    {tryOnMode === 'mix' && (
-                        <section className="step-card">
-                            <h2><span className="step-number">2</span> Ảnh Người Mẫu</h2>
-                            <ImageUploader
-                                image={modelPreview}
-                                onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                            >
-                                <p>+ Tải ảnh người mẫu</p>
-                            </ImageUploader>
+                        {/* Step 3: Finalize (Common for both, Full Width) */}
+                        <section className="step-card full-width">
+                            <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
+                            <div className={`finalize-box ${tryOnMode === 'full' ? 'balanced-layout' : ''}`}>
+                                <div className="summary-info">
+                                    <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
+                                    
+                                    {tryOnMode === 'mix' && (
+                                        <ul className="status-list">
+                                            <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
+                                            <li>Phụ kiện: {[
+                                                shoesImage ? 'Giày' : '',
+                                                jewelryImage ? 'Trang sức' : '',
+                                                bagImage ? 'Túi' : ''
+                                            ].filter(Boolean).join(', ') || 'Không'}</li>
+                                        </ul>
+                                    )}
+                                    
+                                    {tryOnMode === 'full' && (
+                                        <ul className="status-list balanced-list">
+                                            <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                            <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                            <li>Thay: 
+                                                {[
+                                                    fullSetOptions.clothing ? 'Áo/Quần' : '',
+                                                    fullSetOptions.shoes ? 'Giày' : '',
+                                                    fullSetOptions.jewelry ? 'Trang sức' : '',
+                                                    fullSetOptions.bag ? 'Túi' : ''
+                                                ].filter(Boolean).join(', ') || 'Chưa chọn'}
+                                            </li>
+                                        </ul>
+                                    )}
+
+                                    <div className="generation-settings-summary">
+                                        {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
+                                        {generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền'} • 
+                                        {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
+                                        {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
+                                    </div>
+                                </div>
+
+                                <button 
+                                    className="btn btn-primary start-btn" 
+                                    onClick={handleGenerateTryOn} 
+                                    disabled={
+                                        isGenerating || 
+                                        !modelFile || 
+                                        (tryOnMode === 'mix' && !dressImage && !topImage && !bottomImage && !shoesImage && !jewelryImage && !bagImage) ||
+                                        (tryOnMode === 'full' && (!fullOutfitFile || Object.values(fullSetOptions).every(v => !v)))
+                                    }
+                                >
+                                    ✨ {isGenerating ? 'Đang mặc đồ...' : 'Bắt đầu ghép đồ'}
+                                </button>
+                            </div>
                         </section>
-                    )}
 
-                    {/* Step 3: Finalize */}
-                    <section className={`step-card ${tryOnMode === 'full' ? 'full-width' : ''}`}>
-                        <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
-                        <div className={`finalize-box ${tryOnMode === 'full' ? 'balanced-layout' : ''}`}>
-                            <div className="summary-info">
-                                <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
-                                
-                                {tryOnMode === 'mix' && (
-                                    <ul className="status-list">
-                                        <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
-                                        <li>Phụ kiện: {[
-                                            shoesImage ? 'Giày' : '',
-                                            jewelryImage ? 'Trang sức' : '',
-                                            bagImage ? 'Túi' : ''
-                                        ].filter(Boolean).join(', ') || 'Không'}</li>
-                                    </ul>
-                                )}
-                                
-                                {tryOnMode === 'full' && (
-                                    <ul className="status-list balanced-list">
-                                        <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                        <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                        <li>Thay: 
-                                            {[
-                                                fullSetOptions.clothing ? 'Áo/Quần' : '',
-                                                fullSetOptions.shoes ? 'Giày' : '',
-                                                fullSetOptions.jewelry ? 'Trang sức' : '',
-                                                fullSetOptions.bag ? 'Túi' : ''
-                                            ].filter(Boolean).join(', ') || 'Chưa chọn'}
-                                        </li>
-                                    </ul>
-                                )}
-
-                                <div className="generation-settings-summary" style={{ fontSize: '0.9rem', color: '#aaa', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                                    {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
-                                    {generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền'} • 
-                                    {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
-                                    {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
+                        {/* Result Section */}
+                        {(finalImage || isGenerating) && (
+                            <section className="step-card full-width">
+                                <h2><span className="step-number">✨</span> Kết Quả</h2>
+                                <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                                    {isGenerating ? (
+                                        <div style={{textAlign: 'center'}}>
+                                            <div className="spinner"></div>
+                                            <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang xử lý hình ảnh...</p>
+                                        </div>
+                                    ) : (
+                                        finalImage && (
+                                            <div style={{ width: '100%', textAlign: 'center' }}>
+                                                <img src={finalImage} alt="Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} />
+                                                <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                    <a href={finalImage} download="result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                                    <button className="btn btn-secondary" onClick={() => setFinalImage(null)}>🔄 Làm lại</button>
+                                                    <button 
+                                                        className="btn" 
+                                                        style={{ background: '#f59e0b', color: 'white' }}
+                                                        onClick={() => handleTransferToSkinFix(finalImage)}
+                                                    >
+                                                        ✨ Fix da nhựa
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    )}
                                 </div>
-                            </div>
-
-                            <button 
-                                className="btn btn-primary start-btn" 
-                                onClick={handleGenerateTryOn} 
-                                disabled={
-                                    isGenerating || 
-                                    !modelFile || 
-                                    (tryOnMode === 'mix' && !dressImage && !topImage && !bottomImage && !shoesImage && !jewelryImage && !bagImage) ||
-                                    (tryOnMode === 'full' && (!fullOutfitFile || Object.values(fullSetOptions).every(v => !v)))
-                                }
-                            >
-                                ✨ {isGenerating ? 'Đang mặc đồ...' : 'Bắt đầu ghép đồ'}
-                            </button>
-                        </div>
-                    </section>
-                </main>
+                            </section>
+                        )}
+                    </main>
+                </>
             )}
 
-            {activeTab === 'skin-fix' && (
-                <main className="workflow-container">
+            {activeTab === 'fix-skin' && (
+                <div className="workflow-container">
                     <section className="step-card full-width">
-                        <h2>✨ AI Phục Hồi Vật Lý Da (Plasticity Removal)</h2>
-                        <p className="section-desc">
-                            Công nghệ Semantic Texture Synthesis giúp khôi phục độ chân thực vật lý cho da. 
-                            AI sẽ tái tạo lỗ chân lông, xử lý lại ánh sáng (Subsurface Scattering) và loại bỏ hiệu ứng "bóng sáp" 
-                            mà vẫn <strong>giữ nguyên danh tính và biểu cảm gốc</strong> (Identity Preservation).
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
-                            <ImageUploader
-                                label="Ảnh gốc (Bị da nhựa/Filter quá đà)"
-                                image={skinPreview}
-                                onImageSelect={(e) => handleFileChange(e, setSkinFile, setSkinPreview)}
-                                onRemove={() => { setSkinFile(null); setSkinPreview(null); }}
-                            >
-                                <p>+ Tải ảnh cần xử lý</p>
-                            </ImageUploader>
-                            
-                            <button 
-                                className="btn btn-primary" 
-                                onClick={handleFixSkin} 
-                                disabled={!skinFile || isFixingSkin}
-                                style={{ padding: '16px', fontSize: '1.1rem' }}
-                            >
-                                {isFixingSkin ? '🧬 Đang phân tích & tái tạo da...' : '🚀 Khôi phục độ chân thực'}
-                            </button>
+                        <h2><span className="step-number">✨</span> Fix Da Nhựa (Skin Enhancer)</h2>
+                        <div className="dual-upload-container" style={{alignItems: 'start'}}>
+                            <div className="upload-box">
+                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
+                                <img src={skinFixInputImage || ''} style={{width: '100%', borderRadius: '8px'}} alt="Original" />
+                                {!skinFixInputImage && <p style={{color: '#555', textAlign: 'center', padding: '20px'}}>Chưa có ảnh</p>}
+                            </div>
+                            <div className="upload-box">
+                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
+                                {isFixingSkin ? (
+                                    <div style={{textAlign: 'center', padding: '40px'}}>
+                                        <div className="spinner"></div>
+                                        <p style={{marginTop: '15px', color: '#888'}}>Đang tái tạo bề mặt da...</p>
+                                    </div>
+                                ) : skinFixResultImage ? (
+                                    <div>
+                                        <img src={skinFixResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Fixed" />
+                                        <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                                            <a href={skinFixResultImage} download="fixed_skin.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{padding: '40px', textAlign: 'center', color: '#666'}}>
+                                        Chưa có kết quả
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </section>
-                </main>
+                </div>
             )}
-
-            {activeTab === 'breast-aug' && (
-                <main className="workflow-container">
+            
+            {activeTab === 'breast-lift' && (
+                <div className="workflow-container">
                     <section className="step-card full-width">
-                        <h2>AI Nâng Ngực To Và Căng Tự Nhiên</h2>
-                        <p className="section-desc">
-                            Tải ảnh nhân vật lên và AI sẽ làm cho nhân vật có bộ ngực to và căng tự nhiên. 
-                            Hệ thống sẽ tự động điều chỉnh trang phục và ánh sáng để đảm bảo độ chân thực nhất.
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', maxWidth: '600px', margin: '0 auto', width: '100%' }}>
-                            <ImageUploader
-                                label="Ảnh người mẫu (Model)"
-                                image={breastAugPreview}
-                                onImageSelect={(e) => handleFileChange(e, setBreastAugFile, setBreastAugPreview)}
-                                onRemove={() => { setBreastAugFile(null); setBreastAugPreview(null); }}
-                            >
-                                <p>📷 Tải ảnh nhân vật</p>
-                            </ImageUploader>
-                            
-                            <button 
-                                className="btn btn-primary" 
-                                onClick={handleBreastAugmentation} 
-                                disabled={!breastAugFile || isBreastAugmenting}
-                                style={{ padding: '16px', fontSize: '1.1rem' }}
-                            >
-                                {isBreastAugmenting ? '🍑 Đang nâng cấp vòng 1...' : '🚀 Tạo Ảnh AI'}
-                            </button>
-                        </div>
+                         <h2><span className="step-number">👙</span> AI Nâng Ngực</h2>
+                         <div style={{padding: '40px', textAlign: 'center', color: '#888'}}>
+                            <p style={{fontSize: '1.1rem'}}>Tính năng đang được phát triển.</p>
+                            <p>Vui lòng quay lại sau.</p>
+                         </div>
                     </section>
-                </main>
+                </div>
             )}
-
-            {/* Result Display for Try-On */}
-            {activeTab === 'try-on' && (isGenerating || finalImage) && (
-                <section className="result-card">
-                    <h2>Kết Quả Virtual Try-On</h2>
-                    <div className="image-container">
-                        {isGenerating && (
-                            <div className="loader-container">
-                                <div className="spinner"></div>
-                                <p>AI đang phối đồ và xử lý ánh sáng...</p>
-                            </div>
-                        )}
-                        {finalImage && <img src={finalImage} alt="Final result" />}
-                    </div>
-                    {finalImage && (
-                        <div className="download-container">
-                            <button onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)} className="btn btn-secondary">
-                                💾 Tải kết quả (PNG)
-                            </button>
-                            {isDownloadMenuOpen && (
-                                <div className="download-menu">
-                                    <button onClick={() => handleDownload(finalImage, 'try-on', 'original')}>Chất lượng gốc</button>
-                                    <button onClick={() => handleDownload(finalImage, 'try-on', 'hd')}>Full HD</button>
-                                    <button onClick={() => handleDownload(finalImage, 'try-on', '2k')}>2K</button>
-                                    <button onClick={() => handleDownload(finalImage, 'try-on', '4k')}>4K</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </section>
-            )}
-
-            {/* Result Display for Skin Fix */}
-            {activeTab === 'skin-fix' && (isFixingSkin || skinResult) && (
-                <section className="result-card">
-                    <h2>Kết Quả Khôi Phục (Realism)</h2>
-                    <div className="image-container">
-                        {isFixingSkin && (
-                            <div className="loader-container">
-                                <div className="spinner"></div>
-                                <p>Đang tái tạo texture vi mô & ánh sáng...</p>
-                            </div>
-                        )}
-                        {skinResult && <img src={skinResult} alt="Skin fix result" />}
-                    </div>
-                    {skinResult && (
-                        <div className="download-container">
-                            <button onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)} className="btn btn-secondary">
-                                💾 Tải kết quả (PNG)
-                            </button>
-                            {isDownloadMenuOpen && (
-                                <div className="download-menu">
-                                    <button onClick={() => handleDownload(skinResult, 'skin-fix', 'original')}>Chất lượng gốc</button>
-                                    <button onClick={() => handleDownload(skinResult, 'skin-fix', 'hd')}>Full HD</button>
-                                    <button onClick={() => handleDownload(skinResult, 'skin-fix', '2k')}>2K</button>
-                                    <button onClick={() => handleDownload(skinResult, 'skin-fix', '4k')}>4K</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </section>
-            )}
-
-            {/* Result Display for Breast Augmentation */}
-            {activeTab === 'breast-aug' && (isBreastAugmenting || breastAugResult) && (
-                <section className="result-card">
-                    <h2>Kết Quả Nâng Cấp Vòng 1</h2>
-                    <div className="image-container">
-                        {isBreastAugmenting && (
-                            <div className="loader-container">
-                                <div className="spinner"></div>
-                                <p>Đang xử lý hình thể và trang phục...</p>
-                            </div>
-                        )}
-                        {breastAugResult && <img src={breastAugResult} alt="Breast Augmentation result" />}
-                    </div>
-                    {breastAugResult && (
-                        <div className="download-container">
-                            <button onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)} className="btn btn-secondary">
-                                💾 Tải kết quả (PNG)
-                            </button>
-                            {isDownloadMenuOpen && (
-                                <div className="download-menu">
-                                    <button onClick={() => handleDownload(breastAugResult, 'breast-aug', 'original')}>Chất lượng gốc</button>
-                                    <button onClick={() => handleDownload(breastAugResult, 'breast-aug', 'hd')}>Full HD</button>
-                                    <button onClick={() => handleDownload(breastAugResult, 'breast-aug', '2k')}>2K</button>
-                                    <button onClick={() => handleDownload(breastAugResult, 'breast-aug', '4k')}>4K</button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </section>
-            )}
-        </>
+        </div>
     );
 };
 
-const container = document.getElementById('root');
-if (container) {
-    const root = createRoot(container);
-    root.render(<App />);
-}
+const root = createRoot(document.getElementById('root')!);
+root.render(<App />);
