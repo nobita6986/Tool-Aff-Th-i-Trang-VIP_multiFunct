@@ -331,88 +331,85 @@ const App = () => {
         try {
             const parts: any[] = [];
             
-            // 1. Add Model
-            if (modelFile) {
-                const modelB64 = await fileToBase64(modelFile);
-                parts.push({
-                    inlineData: {
-                        mimeType: modelFile.type,
-                        data: modelB64
-                    }
-                });
-                parts.push({ text: "Image of the Person (Model)." });
-            }
+            // --- LOGIC CHANGE: STRUCTURED PROMPT WITH "REFERENCE" LABELS ---
 
-            // 2. Add Garments
-            let garmentDescription = "";
+            // 1. Add Outfit Reference
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
+                parts.push({ text: "REFERENCE IMAGE 1 (CLOTHING SOURCE). This image contains the outfit to be transferred:" });
                 parts.push({
                     inlineData: {
                         mimeType: fullOutfitFile.type,
                         data: outfitB64
                     }
                 });
-                parts.push({ text: "Image of the Outfit." });
-                garmentDescription = "the outfit provided in the image";
             } else if (tryOnMode === 'mix') {
-                const garmentNames = [];
                 for (const [key, file] of Object.entries(mixFiles)) {
                     if (file) {
                         const f = file as File;
                         const b64 = await fileToBase64(f);
+                        parts.push({ text: `REFERENCE IMAGE (CLOTHING ITEM: ${key.toUpperCase()}):` });
                         parts.push({
                             inlineData: {
                                 mimeType: f.type,
                                 data: b64
                             }
                         });
-                        parts.push({ text: `Image of the garment: ${key}.` });
-                        garmentNames.push(key);
                     }
                 }
-                garmentDescription = `the following garments: ${garmentNames.join(', ')}`;
+            }
+
+            // 2. Add Model Reference
+            if (modelFile) {
+                const modelB64 = await fileToBase64(modelFile);
+                parts.push({ text: "REFERENCE IMAGE 2 (TARGET PERSON). This image contains the person who will wear the clothes:" });
+                parts.push({
+                    inlineData: {
+                        mimeType: modelFile.type,
+                        data: modelB64
+                    }
+                });
             }
 
             // 3. Construct Main Prompt
-            let textPrompt = `Perform a virtual try-on. Generate a photorealistic image of the Person (Model) wearing ${garmentDescription}. `;
+            let textPrompt = "TASK: Virtual Try-On / Fashion Compositing.\n";
+            textPrompt += "ACTION: Generate a new photorealistic image of the TARGET PERSON (from Reference 2) wearing the CLOTHING (from Reference 1).\n";
             
-            textPrompt += "The goal is to visualize how the person looks wearing these specific clothes. ";
-            textPrompt += "CRITICAL: Preserve the Person's facial features, identity, hair, and body shape as much as possible. ";
-
+            textPrompt += "\nSTRICT REQUIREMENTS:\n";
+            textPrompt += "1. IDENTITY PRESERVATION: The face, hair, and body shape of the output MUST BE IDENTICAL to the TARGET PERSON in Reference 2. Do NOT use the face from Reference 1.\n";
+            textPrompt += "2. CLOTHING TRANSFER: The clothing from Reference 1 must be worn by the person. Adapt the fit naturally to the Target Person's body.\n";
+            
             if (tryOnMode === 'full') {
                  const activeOptions = Object.entries(fullSetOptions)
                     .filter(([_, active]) => active)
                     .map(([key]) => key);
                 
                 if (activeOptions.length > 0) {
-                     textPrompt += `Replace specifically the ${activeOptions.join(', ')} on the model. Keep other items if they don't conflict. `;
+                     textPrompt += `3. ITEMS TO CHANGE: Only replace the [${activeOptions.join(', ')}]. Keep other items from the Target Person if they don't conflict.\n`;
                 } else {
-                     textPrompt += "Replace the current outfit of the person entirely with the new outfit. ";
+                     textPrompt += "3. ITEMS TO CHANGE: Replace the entire outfit.\n";
                 }
-            } else {
-                textPrompt += "Layer the individual garments naturally on the person. ";
             }
 
             // Settings
             if (generationSettings.changePose) {
-                textPrompt += "Adopt a fashion model pose suitable for showcasing the outfit. ";
+                textPrompt += "4. POSE: Adopt a professional fashion model pose.\n";
             } else {
-                textPrompt += "Keep the pose similar to the original person image if possible. ";
+                textPrompt += "4. POSE: Keep the exact pose of the TARGET PERSON in Reference 2.\n";
             }
 
             if (generationSettings.changeBackground) {
-                textPrompt += "Place the subject in a professional studio background or a suitable lifestyle setting. ";
+                textPrompt += "5. BACKGROUND: Use a clean, professional studio lighting background.\n";
             } else {
-                textPrompt += "Keep the background simple or similar to the original. ";
+                textPrompt += "5. BACKGROUND: Keep the background similar to Reference 2.\n";
             }
 
             if (generationSettings.generateFullBody) {
-                textPrompt += "Ensure the full body is visible in the frame (zoom out if necessary). ";
+                textPrompt += "6. FRAMING: Ensure a full-body shot is generated.\n";
             }
 
-            textPrompt += `Output Aspect Ratio: ${generationSettings.aspectRatio}. `;
-            textPrompt += "High quality, highly detailed, photorealistic texture, realistic lighting.";
+            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
+            textPrompt += "\nQuality: Photorealistic, 8k, highly detailed texture.";
 
             parts.push({ text: textPrompt });
 
