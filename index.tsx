@@ -525,19 +525,19 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt based on user request (Logic from another AI)
-                { text: "ACT AS: Professional Photo Retoucher specializing in body aesthetics.\n" +
-                  "TASK: Naturally enhance the breast size and firmness of the person in the image.\n" +
+                // Updated Prompt for "Stronger Surgery" (DRAMATIC Change)
+                { text: "ACT AS: High-End Glamour Retoucher.\n" +
+                  "TASK: DRAMATIC Breast Augmentation & Body Sculpting.\n" +
+                  "GOAL: Create a significant, visually obvious transformation. The subject should look voluptuous with a distinct hourglass figure.\n\n" +
                   "INSTRUCTIONS:\n" +
-                  "1. **Volumetric Enhancement:** Increase breast volume to look fuller, rounder, and more lifted (1-2 cup sizes larger).\n" +
-                  "2. **Natural Shape & Gravity:** Ensure natural physics - firm but not rigid.\n" +
-                  "3. **Clothing Adaptation:** Adjust clothing to fit new volume with realistic fabric tension.\n" +
-                  "4. **Cleavage & Shadowing:** Enhance cleavage depth naturally.\n\n" +
+                  "1. **MAXIMUM VOLUME:** Significantly increase breast size (3-4 cup sizes larger). They must appear very full, heavy, and lifted.\n" +
+                  "2. **DRAMATIC SILHOUETTE:** Alter the body outline to show a massive difference in curvature. Create deep, defined cleavage.\n" +
+                  "3. **CLOTHING PHYSICS:** Redraw clothing tension. Fabric must stretch tightly over the larger curves. Buttons or seams should look strained if applicable.\n" +
+                  "4. **WAIST CONTRAST:** Slightly slim the waist to exaggerate the bust-to-waist ratio for a 'Bombshell' look.\n\n" +
                   "STRICT CONSTRAINTS:\n" +
-                  "- **IDENTITY LOCK:** Face, hair, makeup, expression, skin tone MUST remain IDENTICAL.\n" +
-                  "- **BACKGROUND LOCK:** Do not change or warp the background.\n" +
-                  "- **STYLE LOCK:** Keep original clothing style, color, and texture.\n" +
-                  "- **REALISM:** Photorealistic result matching original lighting and grain."
+                  "- **IDENTITY PRESERVATION:** Face, features, and hair must remain 100% UNCHANGED.\n" +
+                  "- **BACKGROUND PRESERVATION:** No warping of the background.\n" +
+                  "- **REALISM:** Must look like a real photo, not a cartoon."
                 }
             ];
 
