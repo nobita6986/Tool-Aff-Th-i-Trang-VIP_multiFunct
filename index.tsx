@@ -525,14 +525,19 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Aggressive Body Sculpt Prompt
-                { text: "TASK: Body Scultping & Silhouette Transformation.\n\n" +
-                  "GOAL: Retouch the subject to have a significantly curvier, 'Hourglass' figure. The change must be OBVIOUS and VISIBLE.\n\n" +
-                  "STRICT EDITING RULES:\n" +
-                  "1. UPPER BODY: significantly INCREASE the volume, size, and projection of the chest/bust area. The clothing MUST appear tighter and stretched to accommodate the larger size.\n" +
-                  "2. WAIST: CINCH and slim the waist to create a dramatic curve ratio between bust-waist-hips.\n" +
-                  "3. CLOTHING PHYSICS: Do NOT preserve the original fabric folds if they hide the body. Redraw the clothing to fit the new, curvier body shape tightly.\n" +
-                  "4. PRESERVATION: Keep the Face, Hair, and Background exactly the same. Only the body shape below the neck changes."
+                // Updated Prompt based on user request (Logic from another AI)
+                { text: "ACT AS: Professional Photo Retoucher specializing in body aesthetics.\n" +
+                  "TASK: Naturally enhance the breast size and firmness of the person in the image.\n" +
+                  "INSTRUCTIONS:\n" +
+                  "1. **Volumetric Enhancement:** Increase breast volume to look fuller, rounder, and more lifted (1-2 cup sizes larger).\n" +
+                  "2. **Natural Shape & Gravity:** Ensure natural physics - firm but not rigid.\n" +
+                  "3. **Clothing Adaptation:** Adjust clothing to fit new volume with realistic fabric tension.\n" +
+                  "4. **Cleavage & Shadowing:** Enhance cleavage depth naturally.\n\n" +
+                  "STRICT CONSTRAINTS:\n" +
+                  "- **IDENTITY LOCK:** Face, hair, makeup, expression, skin tone MUST remain IDENTICAL.\n" +
+                  "- **BACKGROUND LOCK:** Do not change or warp the background.\n" +
+                  "- **STYLE LOCK:** Keep original clothing style, color, and texture.\n" +
+                  "- **REALISM:** Photorealistic result matching original lighting and grain."
                 }
             ];
 
