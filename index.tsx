@@ -337,7 +337,7 @@ const App = () => {
             // 1. Add Model Reference (THE SUBJECT)
             if (modelFile) {
                 const modelB64 = await fileToBase64(modelFile);
-                parts.push({ text: "IMAGE A [TARGET MODEL]: Use this person's face, hair, body shape, and pose." });
+                parts.push({ text: "IMAGE A [TARGET MODEL]: This is the main subject. Use this person's face and body characteristics." });
                 parts.push({
                     inlineData: {
                         mimeType: modelFile.type,
@@ -349,7 +349,7 @@ const App = () => {
             // 2. Add Outfit Reference (THE CLOTHING)
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
-                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. Ignore the person's face/body in this image." });
+                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. Ignore the person in this image." });
                 parts.push({
                     inlineData: {
                         mimeType: fullOutfitFile.type,
@@ -373,12 +373,18 @@ const App = () => {
             }
 
             // 3. Construct Main Prompt
-            let textPrompt = "TASK: Virtual Try-On. \n";
-            textPrompt += "INSTRUCTION: Generate a photorealistic image of the person from IMAGE A wearing the clothing from the other provided images.\n";
+            let textPrompt = "TASK: Virtual Try-On & Fashion Compositing. \n";
             
-            textPrompt += "\nCRITICAL RULES:\n";
-            textPrompt += "1. FACE & IDENTITY: You MUST preserve the face and identity of the person in IMAGE A. Do NOT swap faces with IMAGE B. The output face must look exactly like IMAGE A.\n";
-            textPrompt += "2. CLOTHING: Replace the clothes on the person in IMAGE A with the clothes visible in IMAGE B (or the specific mix items). The fit should be natural.\n";
+            // --- DYNAMIC GOAL SETTING BASED ON OPTIONS ---
+            if (generationSettings.changePose) {
+                textPrompt += "GOAL: Generate a NEW image of the person from IMAGE A (Identity) wearing the clothing from IMAGE B, but in a NEW DYNAMIC POSE.\n";
+            } else {
+                textPrompt += "GOAL: Composite the clothing from IMAGE B onto the person in IMAGE A, strictly maintaining the original pose and composition.\n";
+            }
+
+            textPrompt += "\nCRITICAL IDENTITY RULES:\n";
+            textPrompt += "1. IDENTITY: You MUST preserve the face and body shape of the person in IMAGE A. Do NOT use the face from IMAGE B.\n";
+            textPrompt += "2. CLOTHING: Replace the clothes on the person in IMAGE A with the clothes visible in IMAGE B. Fit them naturally.\n";
             
             if (tryOnMode === 'full') {
                  const activeOptions = Object.entries(fullSetOptions)
@@ -392,25 +398,32 @@ const App = () => {
                 }
             }
 
-            // Settings
+            // --- EXPLICIT GENERATION SETTINGS ---
+            textPrompt += "\nGENERATION SETTINGS (MUST FOLLOW):\n";
+
+            // POSE LOGIC
             if (generationSettings.changePose) {
-                textPrompt += "4. POSE: Change to a dynamic fashion pose.\n";
+                textPrompt += "- POSE: **CHANGE THE POSE**. Do NOT use the pose from IMAGE A. Generate a confident, high-fashion model pose suitable for the outfit.\n";
             } else {
-                textPrompt += "4. POSE: Maintain the pose from IMAGE A.\n";
+                textPrompt += "- POSE: **STRICTLY PRESERVE** the pose from IMAGE A. Head angle, arm position, and leg position must remain the same.\n";
             }
 
+            // BACKGROUND LOGIC
             if (generationSettings.changeBackground) {
-                textPrompt += "5. BACKGROUND: Use a high-end studio background.\n";
+                textPrompt += "- BACKGROUND: **CHANGE THE BACKGROUND**. Do NOT use the background from IMAGE A. Place the subject in a clean, professional studio environment (e.g., solid color, soft gradient, or lifestyle setting).\n";
             } else {
-                textPrompt += "5. BACKGROUND: Keep the background similar to IMAGE A.\n";
+                textPrompt += "- BACKGROUND: **KEEP BACKGROUND**. Retain the background environment from IMAGE A.\n";
             }
 
+            // FULL BODY LOGIC
             if (generationSettings.generateFullBody) {
-                textPrompt += "6. VIEW: Ensure full body is visible.\n";
+                textPrompt += "- FRAMING: **FULL BODY SHOT**. You MUST generate a full-body image (Head to Toe). If IMAGE A is cropped (e.g., half-body), you must HALLUCINATE/GENERATE the legs and shoes coherently to complete the look.\n";
+            } else {
+                textPrompt += "- FRAMING: Respect the original framing/crop of IMAGE A.\n";
             }
 
             textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            textPrompt += "\nStyle: Photorealistic, 8k, detailed skin texture.";
+            textPrompt += "\nStyle: Photorealistic, 8k, detailed texture, realistic lighting.";
 
             parts.push({ text: textPrompt });
 
