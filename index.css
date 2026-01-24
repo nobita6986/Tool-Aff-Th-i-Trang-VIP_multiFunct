@@ -457,10 +457,13 @@ body {
     padding: 2rem;
     border-radius: 12px;
     width: 90%;
-    max-width: 400px;
+    max-width: 450px; /* Slightly wider for list */
     border: 1px solid #333;
     box-shadow: 0 10px 25px rgba(0,0,0,0.5);
     text-align: center;
+    max-height: 80vh; /* Prevent overflow on small screens */
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-content h3 {
@@ -468,21 +471,118 @@ body {
     color: white;
 }
 
-.api-input {
+.api-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.api-textarea {
     width: 100%;
     padding: 12px;
-    margin: 15px 0;
     border-radius: 8px;
     border: 1px solid #444;
     background: #2d2d2d;
     color: white;
-    font-size: 1rem;
+    font-size: 0.9rem;
     box-sizing: border-box;
+    font-family: monospace;
+    resize: vertical;
 }
 
-.api-input:focus {
+.api-textarea:focus {
     outline: none;
     border-color: var(--primary-color);
+}
+
+.add-key-btn {
+    align-self: flex-end;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    min-width: auto;
+}
+
+.key-list-container {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #252525;
+    margin-bottom: 15px;
+    text-align: left;
+    max-height: 250px;
+}
+
+.key-list-header {
+    padding: 10px;
+    background: #2d2d2d;
+    font-size: 0.85rem;
+    color: #aaa;
+    border-bottom: 1px solid #333;
+    font-weight: 600;
+}
+
+.key-list {
+    padding: 0;
+}
+
+.key-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    font-size: 0.9rem;
+}
+
+.key-item:last-child {
+    border-bottom: none;
+}
+
+.key-item.key-active {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.key-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.key-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ade80; /* Green */
+}
+.key-item.key-active .key-status-dot {
+    box-shadow: 0 0 5px #4ade80;
+}
+
+.key-text {
+    font-family: monospace;
+    color: #e5e7eb;
+}
+
+.delete-key-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: #ef4444;
+    font-size: 1rem;
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+.delete-key-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.empty-keys {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    font-style: italic;
 }
 
 .modal-actions {

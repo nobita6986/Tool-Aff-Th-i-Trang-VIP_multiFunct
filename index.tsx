@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
@@ -45,10 +45,7 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
 };
 
 const App = () => {
-    // State definitions to fix missing variable errors
-    const [apiKey, setApiKey] = useState('');
-    const [showSettings, setShowSettings] = useState(false);
-    
+    // State
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
     const [error, setError] = useState<string | null>(null);
@@ -95,22 +92,6 @@ const App = () => {
         changeBackground: false,
         generateFullBody: false
     });
-
-    // Load API Key on Mount
-    useEffect(() => {
-        const storedKey = localStorage.getItem('gemini_api_key');
-        if (storedKey) {
-            setApiKey(storedKey);
-        } else if (process.env.API_KEY) {
-            setApiKey(process.env.API_KEY);
-        }
-    }, []);
-
-    const saveApiKey = () => {
-        localStorage.setItem('gemini_api_key', apiKey);
-        setShowSettings(false);
-        setError(null);
-    };
 
     // Handlers
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
@@ -193,23 +174,14 @@ const App = () => {
     };
 
     const handleGenerateTryOn = async () => {
-        if (!apiKey) {
-            setError("Vui lòng nhập API Key trong phần Cài đặt AI để tiếp tục.");
-            setShowSettings(true);
-            return;
-        }
-
         setIsGenerating(true);
         setFinalImage(null);
         setError(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKey });
-            const modelName = 'gemini-2.5-flash-image'; 
-            
+            // Prepare data first
             const parts: any[] = [];
             
-            // Add Model Image
             if (modelFile) {
                 const modelB64 = await fileToBase64(modelFile);
                 parts.push({
@@ -221,7 +193,6 @@ const App = () => {
                 parts.push({ text: "This is the model." });
             }
 
-            // Add Garment Images
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
                 parts.push({
@@ -247,35 +218,34 @@ const App = () => {
                 }
             }
 
-            // Prompt Construction
-            let prompt = "Generate a photorealistic image of the model wearing the provided garments.";
-            
+            let textPrompt = "Generate a photorealistic image of the model wearing the provided garments.";
             if (tryOnMode === 'full') {
                 const activeOptions = Object.entries(fullSetOptions)
                     .filter(([_, active]) => active)
                     .map(([key]) => key);
                 if (activeOptions.length > 0) {
-                    prompt += ` Specifically replace the ${activeOptions.join(', ')} on the model with the ones from the outfit image.`;
+                    textPrompt += ` Specifically replace the ${activeOptions.join(', ')} on the model with the ones from the outfit image.`;
                 } else {
-                    prompt += " Replace the outfit on the model with the provided outfit.";
+                    textPrompt += " Replace the outfit on the model with the provided outfit.";
                 }
             } else {
-                prompt += " Mix and match the provided individual garments onto the model naturally.";
+                textPrompt += " Mix and match the provided individual garments onto the model naturally.";
             }
 
-            if (generationSettings.changePose) prompt += " Change the pose of the model.";
-            if (generationSettings.changeBackground) prompt += " Change the background.";
-            if (generationSettings.generateFullBody) prompt += " Ensure the full body is visible.";
-            prompt += ` Aspect ratio should be ${generationSettings.aspectRatio}.`;
+            if (generationSettings.changePose) textPrompt += " Change the pose of the model.";
+            if (generationSettings.changeBackground) textPrompt += " Change the background.";
+            if (generationSettings.generateFullBody) textPrompt += " Ensure the full body is visible.";
+            textPrompt += ` Aspect ratio should be ${generationSettings.aspectRatio}.`;
+            parts.push({ text: textPrompt });
 
-            parts.push({ text: prompt });
-
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image';
+            
             const response = await ai.models.generateContent({
                 model: modelName,
                 contents: { parts: parts },
             });
 
-            // Handle response
             let foundImage = false;
             if (response.candidates?.[0]?.content?.parts) {
                 for (const part of response.candidates[0].content.parts) {
@@ -288,8 +258,8 @@ const App = () => {
             }
 
             if (!foundImage && response.text) {
-                 console.log("Response text:", response.text);
-                 if (!foundImage) setError("AI trả về phản hồi dạng văn bản thay vì ảnh. Vui lòng thử lại.");
+                    console.log("Response text:", response.text);
+                    if (!foundImage) throw new Error("AI không trả về ảnh (Text response)."); 
             }
 
         } catch (err: any) {
@@ -300,22 +270,12 @@ const App = () => {
         }
     };
 
-    // Refactored process logic to be reusable
     const processSkinFix = async (imageSrc: string) => {
-        if (!apiKey) {
-            setError("Vui lòng nhập API Key để sử dụng tính năng này.");
-            setShowSettings(true);
-            return;
-        }
-
         setIsFixingSkin(true);
         setError(null);
         setSkinFixResultImage(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKey });
-            const modelName = 'gemini-2.5-flash-image'; 
-
             const base64Data = imageSrc.split(',')[1];
             const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
 
@@ -329,6 +289,9 @@ const App = () => {
                 { text: "Enhance the skin texture of the person in this image to look more photorealistic and natural. Remove any plastic-like smoothing or artificial blur. Add realistic skin pores and texture details. Keep the outfit, background, and identity exactly the same. Output high quality image." }
             ];
 
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image';
+            
             const response = await ai.models.generateContent({
                 model: modelName,
                 contents: { parts: parts },
@@ -344,9 +307,7 @@ const App = () => {
                     }
                 }
             }
-             if (!foundImage) {
-                 setError("Không thể xử lý ảnh. Vui lòng thử lại.");
-             }
+            if (!foundImage) throw new Error("Không thể xử lý ảnh.");
 
         } catch (e: any) {
             console.error(e);
@@ -359,26 +320,15 @@ const App = () => {
     const handleTransferToSkinFix = async (imageSrc: string) => {
         setSkinFixInputImage(imageSrc);
         setActiveTab('fix-skin');
-        // Auto start workflow
         await processSkinFix(imageSrc);
     };
 
-    // Refactored process logic to be reusable
     const processBreastLift = async (imageSrc: string) => {
-        if (!apiKey) {
-            setError("Vui lòng nhập API Key để sử dụng tính năng này.");
-            setShowSettings(true);
-            return;
-        }
-
         setIsLiftingBreast(true);
         setError(null);
         setBreastLiftResultImage(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: apiKey });
-            const modelName = 'gemini-2.5-flash-image'; 
-
             const base64Data = imageSrc.split(',')[1];
             const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
 
@@ -391,6 +341,9 @@ const App = () => {
                 },
                 { text: "Enhance the person's figure by slightly lifting and adding fullness to the chest area for a more aesthetic and attractive look, ensuring it looks natural. Keep the face, skin texture, outfit details, and background exactly unchanged." }
             ];
+
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image';
 
             const response = await ai.models.generateContent({
                 model: modelName,
@@ -407,9 +360,7 @@ const App = () => {
                     }
                 }
             }
-             if (!foundImage) {
-                 setError("Không thể xử lý ảnh. Vui lòng thử lại.");
-             }
+            if (!foundImage) throw new Error("Không thể xử lý ảnh.");
 
         } catch (e: any) {
             console.error(e);
@@ -422,24 +373,15 @@ const App = () => {
     const handleTransferToBreastLift = async (imageSrc: string) => {
         setBreastLiftInputImage(imageSrc);
         setActiveTab('breast-lift');
-        // Auto start workflow
         await processBreastLift(imageSrc);
     };
 
     return (
         <div className="container">
-            {/* --- RESTORED HEADER --- */}
+            {/* --- HEADER --- */}
             <header className="main-header">
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
-                <div style={{marginBottom: '20px'}}>
-                    <button 
-                        className="settings-btn"
-                        onClick={() => setShowSettings(true)}
-                    >
-                        ⚙️ Cài đặt AI
-                    </button>
-                </div>
                 
                 <nav className="main-nav">
                     <button 
@@ -465,32 +407,6 @@ const App = () => {
 
              {error && <div className="error-message">{error}</div>}
              
-             {/* Settings Modal */}
-            {showSettings && (
-                <div className="modal-overlay">
-                    <div className="modal-content">
-                        <h3>Cài đặt API Key</h3>
-                        <p style={{color: '#aaa', fontSize: '0.9rem', marginBottom: '15px'}}>
-                            Nhập Google Gemini API Key của bạn để sử dụng. Key sẽ được lưu trên trình duyệt của bạn.
-                        </p>
-                        <input 
-                            type="password" 
-                            value={apiKey} 
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="Nhập API Key (bắt đầu bằng AIza...)"
-                            className="api-input"
-                        />
-                        <div className="modal-actions">
-                            <button className="btn btn-secondary" onClick={() => setShowSettings(false)}>Đóng</button>
-                            <button className="btn btn-primary" onClick={saveApiKey}>Lưu & Áp dụng</button>
-                        </div>
-                        <p style={{marginTop: '15px', fontSize: '0.8rem'}}>
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank" style={{color: '#60a5fa', textDecoration: 'none'}}>👉 Lấy API Key miễn phí tại đây</a>
-                        </p>
-                    </div>
-                </div>
-            )}
-
              {activeTab === 'try-on' && (
                 <>
                     {/* Global Mode Switcher for Try-On */}
