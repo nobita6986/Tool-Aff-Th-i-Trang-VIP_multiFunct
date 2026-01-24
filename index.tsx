@@ -47,27 +47,25 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
 type Provider = 'gemini' | 'openai' | 'grok';
 
 const App = () => {
-    // API Management State
+    // --- API MANAGEMENT STATE ---
     const [apiKeys, setApiKeys] = useState<Record<Provider, string[]>>({
         gemini: [],
         openai: [],
         grok: []
     });
     const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
-    
-    // Modal State
     const [tempKeyInput, setTempKeyInput] = useState('');
     const [showSettings, setShowSettings] = useState(false);
     const [modalSelectedProvider, setModalSelectedProvider] = useState<Provider>('gemini');
     
-    // Rotation Logic refs (one index per provider)
+    // Rotation Logic refs
     const currentKeyIndices = useRef<Record<Provider, number>>({
         gemini: 0,
         openai: 0,
         grok: 0
     });
 
-    // App State
+    // --- APP STATE ---
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
     const [error, setError] = useState<string | null>(null);
@@ -115,7 +113,9 @@ const App = () => {
         generateFullBody: false
     });
 
-    // Load API Keys
+    // --- INITIALIZATION & API LOGIC ---
+
+    // Load API Keys from LocalStorage
     useEffect(() => {
         const storedKeys = localStorage.getItem('multi_provider_api_keys');
         const storedActiveProvider = localStorage.getItem('active_provider') as Provider | null;
@@ -128,25 +128,11 @@ const App = () => {
                 console.error("Error parsing keys", e);
             }
         } else {
-             // Fallback/Migration from old key storage
-            const oldGeminiKeys = localStorage.getItem('gemini_api_keys');
-            const oldSingleKey = localStorage.getItem('gemini_api_key');
-            let initialGeminiKeys: string[] = [];
-
-            if (oldGeminiKeys) {
-                try {
-                    initialGeminiKeys = JSON.parse(oldGeminiKeys);
-                } catch {}
-            } else if (oldSingleKey) {
-                initialGeminiKeys = [oldSingleKey];
-            } else if (process.env.API_KEY) {
-                initialGeminiKeys = [process.env.API_KEY];
-            }
-
-            if (initialGeminiKeys.length > 0) {
+             // Fallback: Use process.env.API_KEY if available as a starter
+            if (process.env.API_KEY) {
                 setApiKeys(prev => {
-                    const newState = { ...prev, gemini: initialGeminiKeys };
-                    localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
+                    const newState = { ...prev, gemini: [process.env.API_KEY!] };
+                    // Don't save to localStorage to avoid persisting env var, just use it in state
                     return newState;
                 });
             }
@@ -158,18 +144,16 @@ const App = () => {
         }
     }, []);
 
-    // API Key Management Functions
     const addApiKeys = () => {
         if (!tempKeyInput.trim()) return;
         
         const newKeys = tempKeyInput
             .split(/[\n,]+/)
             .map(k => k.trim())
-            .filter(k => k.length > 5); // Basic length check
+            .filter(k => k.length > 5);
 
         if (newKeys.length > 0) {
             setApiKeys(prev => {
-                // Filter out duplicates
                 const currentProviderKeys = prev[modalSelectedProvider];
                 const uniqueNewKeys = newKeys.filter(k => !currentProviderKeys.includes(k));
                 
@@ -191,7 +175,6 @@ const App = () => {
             const newState = { ...prev, [provider]: updatedKeys };
             localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
             
-            // Reset rotation index if out of bounds
             if (currentKeyIndices.current[provider] >= updatedKeys.length) {
                 currentKeyIndices.current[provider] = 0;
             }
@@ -204,7 +187,7 @@ const App = () => {
         localStorage.setItem('active_provider', provider);
     };
 
-    // CORE LOGIC: Execute API call with Rotation
+    // CORE: Rotation Logic
     const executeWithRotation = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
         const providerKeys = apiKeys[activeProvider];
 
@@ -226,14 +209,13 @@ const App = () => {
 
             try {
                 const result = await operation(key);
-                // If successful, update sticky index
+                // Success: update sticky index
                 currentKeyIndices.current[activeProvider] = index;
                 return result;
             } catch (err: any) {
-                // CRITICAL FIX: If the error is a content refusal (not a key/quota error), stop rotating.
-                // Refusal messages usually contain "AI không trả về ảnh" (our custom error) or "SAFETY".
+                // If it's a content refusal (Safety/Policy), DON'T rotate, just fail.
                 if (err.message && (err.message.includes("AI không trả về ảnh") || err.message.includes("Safety"))) {
-                    throw err; // Re-throw immediately, do not try other keys
+                    throw err; 
                 }
 
                 console.warn(`Key ...${key.slice(-4)} failed:`, err.message);
@@ -243,7 +225,7 @@ const App = () => {
         throw new Error(`Tất cả Key của ${activeProvider.toUpperCase()} đều lỗi. Lỗi cuối: ${lastError.message}`);
     };
 
-    // Handlers
+    // --- HANDLERS ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -259,7 +241,7 @@ const App = () => {
             reader.onload = (ev) => {
                 if (typeof ev.target?.result === 'string') {
                     setPreview(ev.target.result);
-                    setResult(null); // Reset result when new image is uploaded
+                    setResult(null); 
                 }
             };
             reader.readAsDataURL(file);
@@ -313,7 +295,6 @@ const App = () => {
             reader.readAsDataURL(file);
             reader.onload = () => {
                 if (typeof reader.result === 'string') {
-                    // Extract base64 data only
                     resolve(reader.result.split(',')[1]);
                 } else {
                     reject(new Error("Failed to read file"));
@@ -323,6 +304,8 @@ const App = () => {
         });
     };
 
+    // --- GENERATION FUNCTIONS ---
+
     const handleGenerateTryOn = async () => {
         setIsGenerating(true);
         setFinalImage(null);
@@ -331,10 +314,6 @@ const App = () => {
         try {
             const parts: any[] = [];
             
-            // --- REORDERED LOGIC: MODEL FIRST, THEN OUTFIT ---
-            // This order helps the AI prioritize the subject (Model) identity.
-
-            // 1. Add Model Reference (THE SUBJECT)
             if (modelFile) {
                 const modelB64 = await fileToBase64(modelFile);
                 parts.push({ text: "IMAGE A [TARGET MODEL]: This is the main subject. Use this person's face and body characteristics." });
@@ -346,7 +325,6 @@ const App = () => {
                 });
             }
 
-            // 2. Add Outfit Reference (THE CLOTHING)
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
                 parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. Ignore the person in this image." });
@@ -372,10 +350,8 @@ const App = () => {
                 }
             }
 
-            // 3. Construct Main Prompt
             let textPrompt = "TASK: Virtual Try-On & Fashion Compositing. \n";
             
-            // --- DYNAMIC GOAL SETTING BASED ON OPTIONS ---
             if (generationSettings.changePose) {
                 textPrompt += "GOAL: Generate a NEW image of the person from IMAGE A (Identity) wearing the clothing from IMAGE B, but in a NEW DYNAMIC POSE.\n";
             } else {
@@ -398,24 +374,17 @@ const App = () => {
                 }
             }
 
-            // --- EXPLICIT GENERATION SETTINGS ---
             textPrompt += "\nGENERATION SETTINGS (MUST FOLLOW):\n";
-
-            // POSE LOGIC
             if (generationSettings.changePose) {
                 textPrompt += "- POSE: **CHANGE THE POSE**. Do NOT use the pose from IMAGE A. Generate a confident, high-fashion model pose suitable for the outfit.\n";
             } else {
                 textPrompt += "- POSE: **STRICTLY PRESERVE** the pose from IMAGE A. Head angle, arm position, and leg position must remain the same.\n";
             }
-
-            // BACKGROUND LOGIC
             if (generationSettings.changeBackground) {
                 textPrompt += "- BACKGROUND: **CHANGE THE BACKGROUND**. Do NOT use the background from IMAGE A. Place the subject in a clean, professional studio environment (e.g., solid color, soft gradient, or lifestyle setting).\n";
             } else {
                 textPrompt += "- BACKGROUND: **KEEP BACKGROUND**. Retain the background environment from IMAGE A.\n";
             }
-
-            // FULL BODY LOGIC
             if (generationSettings.generateFullBody) {
                 textPrompt += "- FRAMING: **FULL BODY SHOT**. You MUST generate a full-body image (Head to Toe). If IMAGE A is cropped (e.g., half-body), you must HALLUCINATE/GENERATE the legs and shoes coherently to complete the look.\n";
             } else {
@@ -427,7 +396,7 @@ const App = () => {
 
             parts.push({ text: textPrompt });
 
-            // Execute with Rotation
+            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
                 const modelName = 'gemini-2.5-flash-image';
@@ -449,15 +418,15 @@ const App = () => {
                 }
 
                 if (!foundImage) {
-                     const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                     throw new Error("AI không trả về ảnh" + extraText); 
+                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
+                        throw new Error("AI không trả về ảnh" + extraText); 
                 }
                 return response;
             });
 
         } catch (err: any) {
             console.error("Generation error:", err);
-            setError("Lỗi tạo ảnh: " + (err.message || "Vui lòng kiểm tra API Key."));
+            setError("Lỗi tạo ảnh: " + (err.message || "Vui lòng kiểm tra lại."));
         } finally {
             setIsGenerating(false);
         }
@@ -479,17 +448,27 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt to be much more specific about texture to remove the "plastic" look
-                { text: "TASK: Texture Restoration (De-Smoothing).\n\n" +
-                  "GOAL: The input image looks too 'plastic' or 'filtered'. Generate a NEW image with coarse, hyper-realistic skin texture.\n\n" +
-                  "INSTRUCTIONS:\n" +
-                  "1. ADD DETAILS: Hallucinate and overlay high-frequency details: clear pores, peach fuzz, slight unevenness, and natural skin grain.\n" +
-                  "2. LIGHTING: Increase micro-contrast on the face to emphasize texture depth.\n" +
-                  "3. NO SMOOTHING: Do absolutely NO smoothing. The result must look like a raw, high-resolution 8K photograph.\n" +
-                  "4. IDENTITY: Keep the face features identical."
+                // High-End Beauty Prompt (Revised for Systematic Physics-Based Restoration)
+                { text: "TASK: Advanced Photorealistic Skin Restoration (De-Plasticizing).\n" +
+                  "CONTEXT: The input image is an AI-generated portrait with 'plastic/waxy' skin artifacts.\n" +
+                  "OBJECTIVE: Restore physics-based skin properties without altering the subject's identity.\n\n" +
+
+                  "EXECUTION STEPS:\n" +
+                  "1. SEGMENTATION & PARSING: Focus EXCLUSIVELY on skin regions (cheeks, forehead, chin, nose bridge). STRICTLY PROTECT eyes, eyebrows, lips, and hair from any changes.\n" +
+                  "2. PLASTICITY DETECTION: Identify areas lacking high-frequency details (smooth, blur patches).\n" +
+                  "3. MICRO-TEXTURE SYNTHESIS: Generate non-repeating, irregular micro-textures (pores, fine lines, skin variance) appropriate for the subject's age and lighting conditions. Remove the 'low-frequency' smooth look.\n" +
+                  "4. LIGHTING PHYSICS: Simulate Subsurface Scattering (SSS) to remove the hard 'plastic' shine. Soften specular highlights to look like organic skin, not plastic. Add micro-contrast shadows to skin texture.\n" +
+                  "5. NOISE/GRAIN: Add subtle, realistic camera sensor noise/grain to match a high-end photography look.\n\n" +
+
+                  "NEGATIVE CONSTRAINTS (MUST AVOID):\n" +
+                  "- DO NOT change facial geometry, bone structure, or expression (Identity Preservation is PARAMOUNT).\n" +
+                  "- DO NOT add heavy blemishes or age spots unless present in original.\n" +
+                  "- DO NOT smooth, beautify, or apply 'filters'.\n" +
+                  "- NO waxiness, NO airbrush look."
                 }
             ];
 
+            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
                 const modelName = 'gemini-2.5-flash-image';
@@ -546,7 +525,7 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Aggressive prompt to force clothing change to match body
+                // Aggressive Body Sculpt Prompt
                 { text: "TASK: Body Scultping & Silhouette Transformation.\n\n" +
                   "GOAL: Retouch the subject to have a significantly curvier, 'Hourglass' figure. The change must be OBVIOUS and VISIBLE.\n\n" +
                   "STRICT EDITING RULES:\n" +
@@ -557,6 +536,7 @@ const App = () => {
                 }
             ];
 
+            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
                 const modelName = 'gemini-2.5-flash-image';
@@ -577,8 +557,8 @@ const App = () => {
                     }
                 }
                 if (!foundImage) {
-                     const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                     throw new Error("AI không trả về ảnh" + extraText);
+                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
+                        throw new Error("AI không trả về ảnh" + extraText);
                 }
                 return response;
             });
@@ -599,16 +579,18 @@ const App = () => {
 
     return (
         <div className="container">
-            {/* --- HEADER WITH API SETTINGS --- */}
+            {/* --- HEADER WITH SETTINGS BTN --- */}
             <header className="main-header">
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
+                
                 <div style={{marginBottom: '20px'}}>
                     <button 
                         className="settings-btn"
                         onClick={() => setShowSettings(true)}
                     >
-                        ⚙️ Cài đặt API
+                        <span style={{fontSize: '1.2rem'}}>⚙️</span>
+                        <span>Cài đặt API</span>
                     </button>
                     {activeProvider !== 'gemini' && (
                         <div style={{marginTop: '10px', color: '#f59e0b', fontSize: '0.9rem'}}>
@@ -616,7 +598,7 @@ const App = () => {
                         </div>
                     )}
                 </div>
-                
+
                 <nav className="main-nav">
                     <button 
                         className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`}
@@ -639,9 +621,7 @@ const App = () => {
                 </nav>
             </header>
 
-             {error && <div className="error-message">{error}</div>}
-
-            {/* API Settings Modal */}
+            {/* --- SETTINGS MODAL --- */}
             {showSettings && (
                 <div className="modal-overlay">
                     <div className="modal-content settings-modal-wide">
@@ -748,6 +728,8 @@ const App = () => {
                     </div>
                 </div>
             )}
+
+             {error && <div className="error-message">{error}</div>}
              
              {activeTab === 'try-on' && (
                 <>
