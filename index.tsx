@@ -331,12 +331,25 @@ const App = () => {
         try {
             const parts: any[] = [];
             
-            // --- LOGIC CHANGE: STRUCTURED PROMPT WITH "REFERENCE" LABELS ---
+            // --- REORDERED LOGIC: MODEL FIRST, THEN OUTFIT ---
+            // This order helps the AI prioritize the subject (Model) identity.
 
-            // 1. Add Outfit Reference
+            // 1. Add Model Reference (THE SUBJECT)
+            if (modelFile) {
+                const modelB64 = await fileToBase64(modelFile);
+                parts.push({ text: "IMAGE A [TARGET MODEL]: Use this person's face, hair, body shape, and pose." });
+                parts.push({
+                    inlineData: {
+                        mimeType: modelFile.type,
+                        data: modelB64
+                    }
+                });
+            }
+
+            // 2. Add Outfit Reference (THE CLOTHING)
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
-                parts.push({ text: "REFERENCE IMAGE 1 (CLOTHING SOURCE). This image contains the outfit to be transferred:" });
+                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. Ignore the person's face/body in this image." });
                 parts.push({
                     inlineData: {
                         mimeType: fullOutfitFile.type,
@@ -348,7 +361,7 @@ const App = () => {
                     if (file) {
                         const f = file as File;
                         const b64 = await fileToBase64(f);
-                        parts.push({ text: `REFERENCE IMAGE (CLOTHING ITEM: ${key.toUpperCase()}):` });
+                        parts.push({ text: `IMAGE [CLOTHING ITEM - ${key.toUpperCase()}]: Use this item.` });
                         parts.push({
                             inlineData: {
                                 mimeType: f.type,
@@ -359,25 +372,13 @@ const App = () => {
                 }
             }
 
-            // 2. Add Model Reference
-            if (modelFile) {
-                const modelB64 = await fileToBase64(modelFile);
-                parts.push({ text: "REFERENCE IMAGE 2 (TARGET PERSON). This image contains the person who will wear the clothes:" });
-                parts.push({
-                    inlineData: {
-                        mimeType: modelFile.type,
-                        data: modelB64
-                    }
-                });
-            }
-
             // 3. Construct Main Prompt
-            let textPrompt = "TASK: Virtual Try-On / Fashion Compositing.\n";
-            textPrompt += "ACTION: Generate a new photorealistic image of the TARGET PERSON (from Reference 2) wearing the CLOTHING (from Reference 1).\n";
+            let textPrompt = "TASK: Virtual Try-On. \n";
+            textPrompt += "INSTRUCTION: Generate a photorealistic image of the person from IMAGE A wearing the clothing from the other provided images.\n";
             
-            textPrompt += "\nSTRICT REQUIREMENTS:\n";
-            textPrompt += "1. IDENTITY PRESERVATION: The face, hair, and body shape of the output MUST BE IDENTICAL to the TARGET PERSON in Reference 2. Do NOT use the face from Reference 1.\n";
-            textPrompt += "2. CLOTHING TRANSFER: The clothing from Reference 1 must be worn by the person. Adapt the fit naturally to the Target Person's body.\n";
+            textPrompt += "\nCRITICAL RULES:\n";
+            textPrompt += "1. FACE & IDENTITY: You MUST preserve the face and identity of the person in IMAGE A. Do NOT swap faces with IMAGE B. The output face must look exactly like IMAGE A.\n";
+            textPrompt += "2. CLOTHING: Replace the clothes on the person in IMAGE A with the clothes visible in IMAGE B (or the specific mix items). The fit should be natural.\n";
             
             if (tryOnMode === 'full') {
                  const activeOptions = Object.entries(fullSetOptions)
@@ -385,31 +386,31 @@ const App = () => {
                     .map(([key]) => key);
                 
                 if (activeOptions.length > 0) {
-                     textPrompt += `3. ITEMS TO CHANGE: Only replace the [${activeOptions.join(', ')}]. Keep other items from the Target Person if they don't conflict.\n`;
+                     textPrompt += `3. TARGETED CHANGE: Specifically change the [${activeOptions.join(', ')}] on the model. Keep other accessories from IMAGE A if possible.\n`;
                 } else {
-                     textPrompt += "3. ITEMS TO CHANGE: Replace the entire outfit.\n";
+                     textPrompt += "3. CHANGE: Replace the entire outfit.\n";
                 }
             }
 
             // Settings
             if (generationSettings.changePose) {
-                textPrompt += "4. POSE: Adopt a professional fashion model pose.\n";
+                textPrompt += "4. POSE: Change to a dynamic fashion pose.\n";
             } else {
-                textPrompt += "4. POSE: Keep the exact pose of the TARGET PERSON in Reference 2.\n";
+                textPrompt += "4. POSE: Maintain the pose from IMAGE A.\n";
             }
 
             if (generationSettings.changeBackground) {
-                textPrompt += "5. BACKGROUND: Use a clean, professional studio lighting background.\n";
+                textPrompt += "5. BACKGROUND: Use a high-end studio background.\n";
             } else {
-                textPrompt += "5. BACKGROUND: Keep the background similar to Reference 2.\n";
+                textPrompt += "5. BACKGROUND: Keep the background similar to IMAGE A.\n";
             }
 
             if (generationSettings.generateFullBody) {
-                textPrompt += "6. FRAMING: Ensure a full-body shot is generated.\n";
+                textPrompt += "6. VIEW: Ensure full body is visible.\n";
             }
 
             textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            textPrompt += "\nQuality: Photorealistic, 8k, highly detailed texture.";
+            textPrompt += "\nStyle: Photorealistic, 8k, detailed skin texture.";
 
             parts.push({ text: textPrompt });
 
