@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
-// Component definitions to fix missing component errors
+// Component definitions
 const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: { 
     label?: string; 
     image: string | null; 
@@ -44,7 +44,29 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
     );
 };
 
+type Provider = 'gemini' | 'openai' | 'grok';
+
 const App = () => {
+    // API Management State
+    const [apiKeys, setApiKeys] = useState<Record<Provider, string[]>>({
+        gemini: [],
+        openai: [],
+        grok: []
+    });
+    const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
+    
+    // Modal State
+    const [tempKeyInput, setTempKeyInput] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
+    const [modalSelectedProvider, setModalSelectedProvider] = useState<Provider>('gemini');
+    
+    // Rotation Logic refs (one index per provider)
+    const currentKeyIndices = useRef<Record<Provider, number>>({
+        gemini: 0,
+        openai: 0,
+        grok: 0
+    });
+
     // App State
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
@@ -92,6 +114,129 @@ const App = () => {
         changeBackground: false,
         generateFullBody: false
     });
+
+    // Load API Keys
+    useEffect(() => {
+        const storedKeys = localStorage.getItem('multi_provider_api_keys');
+        const storedActiveProvider = localStorage.getItem('active_provider') as Provider | null;
+
+        if (storedKeys) {
+            try {
+                const parsed = JSON.parse(storedKeys);
+                setApiKeys(prev => ({ ...prev, ...parsed }));
+            } catch (e) {
+                console.error("Error parsing keys", e);
+            }
+        } else {
+             // Fallback/Migration from old key storage
+            const oldGeminiKeys = localStorage.getItem('gemini_api_keys');
+            const oldSingleKey = localStorage.getItem('gemini_api_key');
+            let initialGeminiKeys: string[] = [];
+
+            if (oldGeminiKeys) {
+                try {
+                    initialGeminiKeys = JSON.parse(oldGeminiKeys);
+                } catch {}
+            } else if (oldSingleKey) {
+                initialGeminiKeys = [oldSingleKey];
+            } else if (process.env.API_KEY) {
+                initialGeminiKeys = [process.env.API_KEY];
+            }
+
+            if (initialGeminiKeys.length > 0) {
+                setApiKeys(prev => {
+                    const newState = { ...prev, gemini: initialGeminiKeys };
+                    localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
+                    return newState;
+                });
+            }
+        }
+
+        if (storedActiveProvider && ['gemini', 'openai', 'grok'].includes(storedActiveProvider)) {
+            setActiveProvider(storedActiveProvider);
+            setModalSelectedProvider(storedActiveProvider);
+        }
+    }, []);
+
+    // API Key Management Functions
+    const addApiKeys = () => {
+        if (!tempKeyInput.trim()) return;
+        
+        const newKeys = tempKeyInput
+            .split(/[\n,]+/)
+            .map(k => k.trim())
+            .filter(k => k.length > 5); // Basic length check
+
+        if (newKeys.length > 0) {
+            setApiKeys(prev => {
+                // Filter out duplicates
+                const currentProviderKeys = prev[modalSelectedProvider];
+                const uniqueNewKeys = newKeys.filter(k => !currentProviderKeys.includes(k));
+                
+                const newState = {
+                    ...prev,
+                    [modalSelectedProvider]: [...currentProviderKeys, ...uniqueNewKeys]
+                };
+                localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
+                return newState;
+            });
+            setTempKeyInput('');
+        }
+    };
+
+    const removeApiKey = (provider: Provider, index: number) => {
+        setApiKeys(prev => {
+            const currentProviderKeys = prev[provider];
+            const updatedKeys = currentProviderKeys.filter((_, i) => i !== index);
+            const newState = { ...prev, [provider]: updatedKeys };
+            localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
+            
+            // Reset rotation index if out of bounds
+            if (currentKeyIndices.current[provider] >= updatedKeys.length) {
+                currentKeyIndices.current[provider] = 0;
+            }
+            return newState;
+        });
+    };
+
+    const handleSetActiveProvider = (provider: Provider) => {
+        setActiveProvider(provider);
+        localStorage.setItem('active_provider', provider);
+    };
+
+    // CORE LOGIC: Execute API call with Rotation
+    // Fix: Added comma to generic type <T,> to prevent TSX parser ambiguity
+    const executeWithRotation = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
+        const providerKeys = apiKeys[activeProvider];
+
+        if (activeProvider !== 'gemini') {
+            throw new Error(`Nhà cung cấp ${activeProvider.toUpperCase()} chưa được hỗ trợ cho chức năng này. Vui lòng chọn Gemini.`);
+        }
+
+        if (providerKeys.length === 0) {
+            setShowSettings(true);
+            throw new Error(`Vui lòng nhập API Key cho ${activeProvider.toUpperCase()} trong phần Cài đặt.`);
+        }
+
+        let lastError: any = new Error("Unknown error");
+        const startIndex = currentKeyIndices.current[activeProvider];
+
+        for (let i = 0; i < providerKeys.length; i++) {
+            const index = (startIndex + i) % providerKeys.length;
+            const key = providerKeys[index];
+
+            try {
+                const result = await operation(key);
+                // If successful, update sticky index
+                currentKeyIndices.current[activeProvider] = index;
+                return result;
+            } catch (err: any) {
+                console.warn(`Key ...${key.slice(-4)} failed:`, err.message);
+                lastError = err;
+            }
+        }
+        throw new Error(`Tất cả Key của ${activeProvider.toUpperCase()} đều lỗi. Lỗi cuối: ${lastError.message}`);
+    };
 
     // Handlers
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
@@ -237,28 +382,32 @@ const App = () => {
             textPrompt += ` Aspect ratio should be ${generationSettings.aspectRatio}.`;
             parts.push({ text: textPrompt });
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const modelName = 'gemini-2.5-flash-image';
-            
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: { parts: parts },
-            });
+            // Execute with Rotation
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const modelName = 'gemini-2.5-flash-image';
+                
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: parts },
+                });
 
-            let foundImage = false;
-            if (response.candidates?.[0]?.content?.parts) {
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData) {
-                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                        setFinalImage(imageUrl);
-                        foundImage = true;
+                let foundImage = false;
+                if (response.candidates?.[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.inlineData) {
+                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            setFinalImage(imageUrl);
+                            foundImage = true;
+                        }
                     }
                 }
-            }
 
-            if (!foundImage && response.text) {
-                 if (!foundImage) throw new Error("AI không trả về ảnh (Text response)."); 
-            }
+                if (!foundImage && response.text) {
+                     if (!foundImage) throw new Error("AI không trả về ảnh (Text response)."); 
+                }
+                return response;
+            });
 
         } catch (err: any) {
             console.error("Generation error:", err);
@@ -287,25 +436,28 @@ const App = () => {
                 { text: "Enhance the skin texture of the person in this image to look more photorealistic and natural. Remove any plastic-like smoothing or artificial blur. Add realistic skin pores and texture details. Keep the outfit, background, and identity exactly the same. Output high quality image." }
             ];
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const modelName = 'gemini-2.5-flash-image';
-            
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: { parts: parts },
-            });
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const modelName = 'gemini-2.5-flash-image';
+                
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: parts },
+                });
 
-            let foundImage = false;
-            if (response.candidates?.[0]?.content?.parts) {
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData) {
-                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                        setSkinFixResultImage(imageUrl);
-                        foundImage = true;
+                let foundImage = false;
+                if (response.candidates?.[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.inlineData) {
+                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            setSkinFixResultImage(imageUrl);
+                            foundImage = true;
+                        }
                     }
                 }
-            }
-            if (!foundImage) throw new Error("Không thể xử lý ảnh.");
+                if (!foundImage) throw new Error("Không thể xử lý ảnh.");
+                return response;
+            });
 
         } catch (e: any) {
             console.error(e);
@@ -340,25 +492,28 @@ const App = () => {
                 { text: "Edit this image to significantly increase the size and fullness of the person's breasts. Make the chest area visibly larger, curvier, and more lifted. Ensure the clothes stretch naturally to fit the new shape. Keep the face, skin, and background exactly the same. Photorealistic result." }
             ];
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const modelName = 'gemini-2.5-flash-image';
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const modelName = 'gemini-2.5-flash-image';
 
-            const response = await ai.models.generateContent({
-                model: modelName,
-                contents: { parts: parts },
-            });
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: parts },
+                });
 
-            let foundImage = false;
-            if (response.candidates?.[0]?.content?.parts) {
-                for (const part of response.candidates[0].content.parts) {
-                    if (part.inlineData) {
-                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                        setBreastLiftResultImage(imageUrl);
-                        foundImage = true;
+                let foundImage = false;
+                if (response.candidates?.[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.inlineData) {
+                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            setBreastLiftResultImage(imageUrl);
+                            foundImage = true;
+                        }
                     }
                 }
-            }
-            if (!foundImage) throw new Error("Không thể xử lý ảnh.");
+                if (!foundImage) throw new Error("Không thể xử lý ảnh.");
+                return response;
+            });
 
         } catch (e: any) {
             console.error(e);
@@ -376,11 +531,22 @@ const App = () => {
 
     return (
         <div className="container">
-            {/* --- HEADER --- */}
+            {/* --- HEADER WITH API SETTINGS --- */}
             <header className="main-header">
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
                 <div style={{marginBottom: '20px'}}>
+                    <button 
+                        className="settings-btn"
+                        onClick={() => setShowSettings(true)}
+                    >
+                        ⚙️ Cài đặt API
+                    </button>
+                    {activeProvider !== 'gemini' && (
+                        <div style={{marginTop: '10px', color: '#f59e0b', fontSize: '0.9rem'}}>
+                            ⚠️ Đang dùng: {activeProvider.toUpperCase()} (Chưa hỗ trợ tạo ảnh)
+                        </div>
+                    )}
                 </div>
                 
                 <nav className="main-nav">
@@ -406,6 +572,114 @@ const App = () => {
             </header>
 
              {error && <div className="error-message">{error}</div>}
+
+            {/* API Settings Modal */}
+            {showSettings && (
+                <div className="modal-overlay">
+                    <div className="modal-content settings-modal-wide">
+                        <div className="modal-header">
+                            <h3>Quản lý API Key</h3>
+                            <button className="modal-close" onClick={() => setShowSettings(false)}>×</button>
+                        </div>
+                        
+                        <div className="modal-body">
+                            {/* Sidebar */}
+                            <div className="modal-sidebar">
+                                <button 
+                                    className={`sidebar-item ${modalSelectedProvider === 'gemini' ? 'active' : ''}`}
+                                    onClick={() => setModalSelectedProvider('gemini')}
+                                >
+                                    <span className="icon">💎</span> Gemini
+                                    <span className="count-badge">{apiKeys.gemini.length}</span>
+                                </button>
+                                <button 
+                                    className={`sidebar-item ${modalSelectedProvider === 'openai' ? 'active' : ''}`}
+                                    onClick={() => setModalSelectedProvider('openai')}
+                                >
+                                    <span className="icon">🌀</span> Open AI
+                                    <span className="count-badge">{apiKeys.openai.length}</span>
+                                </button>
+                                <button 
+                                    className={`sidebar-item ${modalSelectedProvider === 'grok' ? 'active' : ''}`}
+                                    onClick={() => setModalSelectedProvider('grok')}
+                                >
+                                    <span className="icon">🚀</span> Grok
+                                    <span className="count-badge">{apiKeys.grok.length}</span>
+                                </button>
+
+                                <div className="active-provider-section">
+                                    <label>Đang sử dụng:</label>
+                                    <select 
+                                        value={activeProvider} 
+                                        onChange={(e) => handleSetActiveProvider(e.target.value as Provider)}
+                                        className="provider-select"
+                                    >
+                                        <option value="gemini">Gemini (Khuyên dùng)</option>
+                                        <option value="openai">Open AI</option>
+                                        <option value="grok">Grok</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Main Content */}
+                            <div className="modal-main">
+                                <h4 style={{marginTop: 0, marginBottom: '10px', textTransform: 'capitalize'}}>
+                                    Quản lý Key {modalSelectedProvider}
+                                </h4>
+                                <p style={{color: '#aaa', fontSize: '0.85rem', marginBottom: '15px'}}>
+                                    {modalSelectedProvider === 'gemini' 
+                                        ? "Dùng để tạo ảnh Try-On, Fix da, Nâng ngực." 
+                                        : "Chức năng tạo ảnh với provider này đang phát triển."}
+                                </p>
+                                
+                                <div className="api-input-group">
+                                    <textarea 
+                                        value={tempKeyInput} 
+                                        onChange={(e) => setTempKeyInput(e.target.value)}
+                                        placeholder={`Dán danh sách Key ${modalSelectedProvider} (mỗi dòng một Key)...`}
+                                        className="api-textarea"
+                                        rows={3}
+                                    />
+                                    <button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button>
+                                </div>
+
+                                <div className="key-list-container">
+                                    <div className="key-list-header">
+                                        Danh sách Key ({apiKeys[modalSelectedProvider].length})
+                                    </div>
+                                    <div className="key-list">
+                                        {apiKeys[modalSelectedProvider].length === 0 ? (
+                                            <div className="empty-keys">Chưa có Key nào.</div>
+                                        ) : (
+                                            apiKeys[modalSelectedProvider].map((k, i) => (
+                                                <div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}>
+                                                    <div className="key-info">
+                                                        <span className={`key-status-dot ${modalSelectedProvider === activeProvider ? 'active' : 'inactive'}`}></span>
+                                                        <span className="key-text">...{k.slice(-6)}</span>
+                                                    </div>
+                                                    <button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                <div style={{marginTop: 'auto', paddingTop: '10px', fontSize: '0.8rem'}}>
+                                    {modalSelectedProvider === 'gemini' && (
+                                        <a href="https://aistudio.google.com/app/apikey" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy Gemini API Key</a>
+                                    )}
+                                    {modalSelectedProvider === 'openai' && (
+                                        <a href="https://platform.openai.com/api-keys" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy OpenAI API Key</a>
+                                    )}
+                                    {modalSelectedProvider === 'grok' && (
+                                        <a href="https://console.x.ai/" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy Grok API Key</a>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
              
              {activeTab === 'try-on' && (
                 <>
