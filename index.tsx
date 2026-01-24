@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Modality } from "@google/genai";
@@ -376,17 +375,13 @@ const App = () => {
     // --- Try-On States ---
     const [tryOnMode, setTryOnMode] = useState<'mix' | 'full'>('full'); // 'mix' = Top/Bottom split, 'full' = One image set
     
-    // Mix Mode States
-    const [sourceGarmentFile, setSourceGarmentFile] = useState<File | null>(null);
-    const [sourceGarmentPreview, setSourceGarmentPreview] = useState<string | null>(null);
-    
+    // Mix Mode States - Replaced Extraction Logic with Direct Uploads
+    const [dressImage, setDressImage] = useState<string | null>(null); // Váy / Đầm nguyên bộ
     const [topImage, setTopImage] = useState<string | null>(null);
     const [bottomImage, setBottomImage] = useState<string | null>(null);
     const [shoesImage, setShoesImage] = useState<string | null>(null);
-    
-    const [isExtractingTop, setIsExtractingTop] = useState(false);
-    const [isExtractingBottom, setIsExtractingBottom] = useState(false);
-    const [isExtractingShoes, setIsExtractingShoes] = useState(false);
+    const [jewelryImage, setJewelryImage] = useState<string | null>(null); // Trang sức
+    const [bagImage, setBagImage] = useState<string | null>(null); // Túi xách
 
     // Full Set Mode States
     const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
@@ -471,74 +466,30 @@ const App = () => {
         }
     };
 
-    const handleDirectGarmentUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'top' | 'bottom' | 'shoes') => {
+    const handleDirectGarmentUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'dress' | 'top' | 'bottom' | 'shoes' | 'jewelry' | 'bag') => {
         const file = e.target.files?.[0];
         if (file) {
             const url = URL.createObjectURL(file);
-            if (type === 'top') setTopImage(url);
-            else if (type === 'bottom') setBottomImage(url);
-            else setShoesImage(url);
+            switch (type) {
+                case 'dress': setDressImage(url); break;
+                case 'top': setTopImage(url); break;
+                case 'bottom': setBottomImage(url); break;
+                case 'shoes': setShoesImage(url); break;
+                case 'jewelry': setJewelryImage(url); break;
+                case 'bag': setBagImage(url); break;
+            }
             setError(null);
         }
     };
 
-    const handleRemoveGarment = (type: 'top' | 'bottom' | 'shoes') => {
-        if (type === 'top') setTopImage(null);
-        else if (type === 'bottom') setBottomImage(null);
-        else setShoesImage(null);
-    };
-
-    const handleExtract = async (type: 'top' | 'bottom' | 'shoes') => {
-        if (!checkProviderReady()) return;
-
-        if (!sourceGarmentFile) {
-            setError('Vui lòng tải ảnh gốc để tách trang phục.');
-            return;
-        }
-        
-        if (type === 'top') setIsExtractingTop(true);
-        else if (type === 'bottom') setIsExtractingBottom(true);
-        else setIsExtractingShoes(true);
-
-        setError(null);
-
-        try {
-            const activeKey = getActiveKey(apiSettings.provider);
-            const ai = new GoogleGenAI({ apiKey: activeKey! });
-            const imagePart = await fileToGenerativePart(sourceGarmentFile);
-            let prompt = '';
-            
-            if (type === 'top') {
-                prompt = 'Extract ONLY the upper body garment (shirt, t-shirt, jacket, etc.) from this image. Place it on a completely transparent background. Remove the person and everything else.';
-            } else if (type === 'bottom') {
-                prompt = 'Extract ONLY the lower body garment (pants, shorts, skirt, etc.) from this image. Place it on a completely transparent background. Remove the person and everything else.';
-            } else {
-                prompt = 'Extract ONLY the footwear (shoes, sneakers, sandals, boots, etc.) from this image. Place it on a completely transparent background. Remove the person and everything else.';
-            }
-
-            const response = await ai.models.generateContent({
-                model: apiSettings.models[apiSettings.provider],
-                contents: {
-                    parts: [imagePart, { text: prompt }],
-                },
-                config: { responseModalities: [Modality.IMAGE] },
-            });
-
-            const firstPart = response.candidates?.[0]?.content?.parts?.[0];
-            if (firstPart && firstPart.inlineData) {
-                const imageUrl = `data:${firstPart.inlineData.mimeType};base64,${firstPart.inlineData.data}`;
-                if (type === 'top') setTopImage(imageUrl);
-                else if (type === 'bottom') setBottomImage(imageUrl);
-                else setShoesImage(imageUrl);
-            } else {
-                throw new Error(`Không thể tách ${type === 'top' ? 'áo' : type === 'bottom' ? 'quần' : 'giày'}. Thử ảnh khác rõ hơn.`);
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Lỗi không xác định khi tách đồ.');
-        } finally {
-            if (type === 'top') setIsExtractingTop(false);
-            else if (type === 'bottom') setIsExtractingBottom(false);
-            else setIsExtractingShoes(false);
+    const handleRemoveGarment = (type: 'dress' | 'top' | 'bottom' | 'shoes' | 'jewelry' | 'bag') => {
+        switch (type) {
+            case 'dress': setDressImage(null); break;
+            case 'top': setTopImage(null); break;
+            case 'bottom': setBottomImage(null); break;
+            case 'shoes': setShoesImage(null); break;
+            case 'jewelry': setJewelryImage(null); break;
+            case 'bag': setBagImage(null); break;
         }
     };
 
@@ -569,8 +520,9 @@ const App = () => {
             return;
         }
 
-        if (tryOnMode === 'mix' && !topImage && !bottomImage && !shoesImage) {
-            setError('Vui lòng chọn ít nhất một món đồ (áo, quần hoặc giày) để thay.');
+        const hasMixItems = dressImage || topImage || bottomImage || shoesImage || jewelryImage || bagImage;
+        if (tryOnMode === 'mix' && !hasMixItems) {
+            setError('Vui lòng chọn ít nhất một món đồ để thay.');
             return;
         }
 
@@ -590,110 +542,122 @@ const App = () => {
             const ai = new GoogleGenAI({ apiKey: activeKey! });
             
             const parts: any[] = [];
-            let instructions = "You are a professional fashion editor and creative director. ";
+            let imageIndex = 1;
+            let referenceMap = "";
 
-            // --- Common Instructions for Pose, Background, and Full Body ---
-            const poseInstruction = generationSettings.changePose
-                ? "POSE ADAPTATION: The model's pose MUST be changed. Generate a new, natural, and dynamic fashion pose that best showcases the new outfit. Do not be constrained by the original pose."
-                : "POSE PRESERVATION: Keep the model's body pose, head position, and gesture identical to the original image (unless Full Body Generation requires extending the pose).";
-
-            const backgroundInstruction = generationSettings.changeBackground
-                ? "BACKGROUND GENERATION: Replace the original background completely. Generate a new, high-quality, realistic setting that matches the style of the outfit. The lighting on the model must match this new background."
-                : "BACKGROUND PRESERVATION: Keep the original background EXACTLY as it is. Do not change the scene (unless Full Body Generation requires extending the background).";
-
-            const fullBodyInstruction = generationSettings.generateFullBody
-                ? "FULL BODY GENERATION: The input model image might be half-body or cropped. You MUST generate a FULL BODY output. Extrapolate legs, feet, and missing limbs naturally. Ensure the outfit (especially pants/shoes) is fully visible. Resize/outpaint as necessary to fit the full body."
-                : "FRAME PRESERVATION: Keep the original framing/crop of the model image.";
-            // ---------------------------------------------------
-
+            // --- BUILD PROMPT STRATEGY ---
+            
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitPart = await fileToGenerativePart(fullOutfitFile);
                 parts.push(outfitPart);
-                const modelPart = await fileToGenerativePart(modelFile);
-                parts.push(modelPart);
-
-                // Build granular target list
-                const targets = [];
-                if (fullSetOptions.clothing) targets.push("- Main Clothing (Dress, Suit, Top & Bottom, Jacket)");
-                if (fullSetOptions.shoes) targets.push("- Footwear (Shoes, Sandals, Boots)");
-                if (fullSetOptions.jewelry) targets.push("- Jewelry & Accessories (Necklaces, Earrings, Glasses)");
-                if (fullSetOptions.bag) targets.push("- Bags (Handbags, Purses - positioned naturally)");
-
-                if (targets.length === 0) {
-                    throw new Error("Vui lòng chọn ít nhất một mục để thay thế (Áo, Giày, Trang sức...).");
+                referenceMap += `- Image ${imageIndex}: SOURCE REFERENCE OUTFIT (Contains the clothes to transfer).\n`;
+                imageIndex++;
+            } else if (tryOnMode === 'mix') {
+                // Determine Main Outfit Logic
+                if (dressImage) {
+                    const part = await urlToGenerativePart(dressImage);
+                    parts.push(part);
+                    referenceMap += `- Image ${imageIndex}: SOURCE ONE-PIECE DRESS/FULL BODY SUIT. This replaces the entire main outfit.\n`;
+                    imageIndex++;
+                } else {
+                    if (topImage) {
+                        const part = await urlToGenerativePart(topImage);
+                        parts.push(part);
+                        referenceMap += `- Image ${imageIndex}: SOURCE TOP GARMENT (Shirt/Jacket/Blouse).\n`;
+                        imageIndex++;
+                    }
+                    if (bottomImage) {
+                        const part = await urlToGenerativePart(bottomImage);
+                        parts.push(part);
+                        referenceMap += `- Image ${imageIndex}: SOURCE BOTTOM GARMENT (Pants/Skirt/Shorts).\n`;
+                        imageIndex++;
+                    }
                 }
+
+                // Accessories
+                if (shoesImage) {
+                    const part = await urlToGenerativePart(shoesImage);
+                    parts.push(part);
+                    referenceMap += `- Image ${imageIndex}: SOURCE FOOTWEAR (Shoes/Heels/Sneakers).\n`;
+                    imageIndex++;
+                }
+                if (jewelryImage) {
+                    const part = await urlToGenerativePart(jewelryImage);
+                    parts.push(part);
+                    referenceMap += `- Image ${imageIndex}: SOURCE JEWELRY/ACCESSORIES.\n`;
+                    imageIndex++;
+                }
+                if (bagImage) {
+                    const part = await urlToGenerativePart(bagImage);
+                    parts.push(part);
+                    referenceMap += `- Image ${imageIndex}: SOURCE BAG/HANDBAG.\n`;
+                    imageIndex++;
+                }
+            }
+
+            // Add Model Image Last
+            const modelPart = await fileToGenerativePart(modelFile);
+            parts.push(modelPart);
+            referenceMap += `- Image ${imageIndex}: TARGET MODEL (The person to dress).\n`;
+
+            // --- ADVANCED PROMPT ENGINEERING ---
+            let instructions = `
+            ROLE: You are an advanced AI Texture Transfer and Virtual Try-On Engine.
+            TASK: Photorealistic Garment Transfer.
+
+            INPUT MAP:
+            ${referenceMap}
+
+            OBJECTIVE:
+            Transfer the clothing items from the SOURCE image(s) onto the TARGET MODEL in the last image.
+            
+            CRITICAL RULES FOR ACCURACY (STRICT ENFORCEMENT):
+            1. **TEXTURE FIDELITY:** You must perform a "texture transfer" operation. Do not re-imagine the clothes. COPY the exact fabric pattern, logo, print, material texture, and stitching details from the Source Image(s) and warp them onto the Target Model.
+            2. **COLOR ACCURACY:** The color of the output clothes MUST match the Source Image exactly. Do not shift colors due to lighting.
+            3. **PHYSICAL FIT:** The clothes must wrap around the Target Model's body volumetrically. Respect the model's body shape and pose. Create realistic fabric folds, wrinkles, and shadows where the cloth bends.
+            4. **REMOVAL:** Completely remove the Target Model's original clothes in the areas where new clothes are applied. Replace them seamlessly.
+            5. **LAYERING:** If both Top and Bottom are provided, tuck the top in or leave it out based on the style shown in the source images. If a Dress is provided, it covers both upper and lower body.
+            
+            SPECIFIC INSTRUCTIONS:
+            `;
+
+            if (tryOnMode === 'full') {
+                 // Build granular target list for Full Mode
+                const targets = [];
+                if (fullSetOptions.clothing) targets.push("Main Outfit (Top & Bottom/Dress)");
+                if (fullSetOptions.shoes) targets.push("Footwear");
+                if (fullSetOptions.jewelry) targets.push("Jewelry/Accessories");
+                if (fullSetOptions.bag) targets.push("Bags/Handbags");
 
                 instructions += `
-                ACT AS: Expert AI Virtual Stylist & Image Compositor.
-                
-                INPUTS:
-                - Image 1: Reference Set (Contains items).
-                - Image 2: Target Model.
-
-                MISSION: Transfer SPECIFIC items from Reference to Target based on the list below. Ignore other items in the reference.
-
-                TARGET ITEMS TO TRANSFER:
-                ${targets.join('\n')}
-
-                EXECUTION RULES FOR TARGET ITEMS:
-                1. **Total Erasure & Replacement:** 
-                   - If transferring CLOTHING: You MUST completely remove the model's original clothes first. DO NOT overlay. If the new item reveals skin (e.g., strapless), generate realistic skin texture/collarbones to replace the old fabric. No ghosting.
-                   - If transferring SHOES: Remove old shoes entirely.
-                2. **Preservation:** 
-                   - If a category is NOT selected (e.g., Jewelry), KEEP the model's original item in that category (unless Pose Change is active, then adapt naturally).
-                   - ALWAYS preserve Face Identity and Hair (unless covered by new hat).
-                3. **Compositing & Environment:**
-                   - ${poseInstruction}
-                   - ${backgroundInstruction}
-                   - ${fullBodyInstruction}
-                   - Fit items naturally to the body. Match lighting and shadows.
-                
-                OUTPUT:
-                Photorealistic result with selected items swapped, respecting pose, background, and frame settings.
+                - SOURCE TYPE: Full Outfit Reference.
+                - ITEMS TO TRANSFER: ${targets.join(', ')}.
+                - IGNORE other items in the source image unless listed above.
+                - If the Source Image is a flat lay or mannequin, identify the garment boundaries precisely and map them to the human form of the Target Model.
                 `;
-
             } else {
-                // Mix Mode
-                const ordinals = ["first", "second", "third"];
-                let itemIndex = 0;
-
-                if (topImage) {
-                    const topPart = await urlToGenerativePart(topImage);
-                    parts.push(topPart);
-                    instructions += `Take the TOP garment from the ${ordinals[itemIndex]} provided item image. `;
-                    itemIndex++;
-                }
-                if (bottomImage) {
-                    const bottomPart = await urlToGenerativePart(bottomImage);
-                    parts.push(bottomPart);
-                    instructions += `Take the BOTTOM garment from the ${ordinals[itemIndex]} provided item image. `;
-                    itemIndex++;
-                }
-                if (shoesImage) {
-                    const shoesPart = await urlToGenerativePart(shoesImage);
-                    parts.push(shoesPart);
-                    instructions += `Take the FOOTWEAR (shoes/slippers) from the ${ordinals[itemIndex]} provided item image. `;
-                    itemIndex++;
-                }
-
-                const modelPart = await fileToGenerativePart(modelFile);
-                parts.push(modelPart);
-
-                instructions += `Dress the person in the last image with these items. 
-                
-                RULES:
-                1. If a top is provided, replace the model's top.
-                2. If a bottom is provided, replace the model's pants/skirt.
-                3. If footwear is provided, replace the model's shoes.
-                4. Keep original items if no replacement is provided.
-                
-                ADDITIONAL SETTINGS:
-                - ${poseInstruction}
-                - ${backgroundInstruction}
-                - ${fullBodyInstruction}
-                
-                Ensure realistic fit, shadows, lighting, and natural fabric folds. High quality output.`;
+                instructions += `
+                - SOURCE TYPE: Mix & Match Individual Items.
+                - Composite the provided specific items onto the Target Model.
+                - If a Dress is provided, ignore existing Top/Bottom on the model.
+                - If Top/Bottom are provided, replace respective areas.
+                - If Accessories (Shoes/Jewelry/Bag) are provided, add them naturally.
+                `;
             }
+
+            // Add Settings Instructions
+            instructions += `
+            \nADDITIONAL CONFIGURATION:
+            - POSE: ${generationSettings.changePose ? "CHANGE the model's pose to showcase the outfit better. Make it dynamic." : "KEEP the model's original pose exactly as is."}
+            - BACKGROUND: ${generationSettings.changeBackground ? "REPLACE the background with a high-quality, fitting environment." : "KEEP the original background exactly as is."}
+            - FRAMING: ${generationSettings.generateFullBody ? "GENERATE A FULL BODY shot. Extrapolate legs/shoes if cropped." : "KEEP the original image cropping/framing."}
+            
+            OUTPUT QUALITY:
+            - High Dynamic Range (HDR).
+            - Sharp textures.
+            - No artifacts or ghosting around edges.
+            - Photorealistic lighting matching the environment.
+            `;
 
             const response = await ai.models.generateContent({
                 model: selectedModel,
@@ -846,6 +810,10 @@ const App = () => {
     const handleDownload = (imageUrl: string | null, filenamePrefix: string, quality: 'original' | 'hd' | '2k' | '4k') => {
         if (!imageUrl) return;
         setIsDownloadMenuOpen(false);
+        
+        // Tạo hậu tố thời gian: YYYYMMDDHHmmss
+        const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+
         const resolutions = { hd: 1920, '2k': 2560, '4k': 3840 };
         const triggerDownload = (href: string, filename: string) => {
             const link = document.createElement('a');
@@ -857,7 +825,7 @@ const App = () => {
         };
 
         if (quality === 'original') {
-            triggerDownload(imageUrl, `${filenamePrefix}-original.png`);
+            triggerDownload(imageUrl, `${filenamePrefix}-${quality}-${timestamp}.png`);
             return;
         }
 
@@ -872,7 +840,7 @@ const App = () => {
             canvas.width = img.width >= img.height ? target : target * ratio;
             canvas.height = img.width >= img.height ? target / ratio : target;
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            triggerDownload(canvas.toDataURL('image/png'), `${filenamePrefix}-${quality}.png`);
+            triggerDownload(canvas.toDataURL('image/png'), `${filenamePrefix}-${quality}-${timestamp}.png`);
         };
         img.src = imageUrl;
     };
@@ -927,7 +895,7 @@ const App = () => {
                     <section className="step-card full-width">
                         <h2>
                             <span className="step-number">1</span> 
-                            {tryOnMode === 'full' ? 'Cấu hình & Dữ liệu' : 'Chọn Chế Độ Thay Đồ'}
+                            {tryOnMode === 'full' ? 'Cấu hình & Dữ liệu' : 'Chọn Đồ Mix & Match'}
                         </h2>
                         
                         {/* Mode Switcher */}
@@ -1076,52 +1044,67 @@ const App = () => {
                                 </div>
                             ) : (
                                 <>
-                                    <div className="source-upload">
-                                        <ImageUploader
-                                            label="Ảnh gốc để tách đồ"
-                                            image={sourceGarmentPreview}
-                                            onImageSelect={(e) => handleFileChange(e, setSourceGarmentFile, setSourceGarmentPreview)}
-                                        >
-                                            <p>Tải ảnh chứa đồ cần lấy</p>
-                                        </ImageUploader>
-                                        <div className="action-buttons">
-                                            <button className="btn btn-secondary" onClick={() => handleExtract('top')} disabled={!sourceGarmentFile || isExtractingTop || isExtractingBottom || isExtractingShoes}>
-                                                {isExtractingTop ? '⏳...' : '👕 Tách Áo'}
-                                            </button>
-                                            <button className="btn btn-secondary" onClick={() => handleExtract('bottom')} disabled={!sourceGarmentFile || isExtractingTop || isExtractingBottom || isExtractingShoes}>
-                                                {isExtractingBottom ? '⏳...' : '👖 Tách Quần'}
-                                            </button>
-                                            <button className="btn btn-secondary" onClick={() => handleExtract('shoes')} disabled={!sourceGarmentFile || isExtractingTop || isExtractingBottom || isExtractingShoes}>
-                                                {isExtractingShoes ? '⏳...' : '👟 Tách Giày'}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="extracted-items-container">
-                                        <div className="extracted-items">
+                                    {/* NEW MIX MODE UI - NO EXTRACTION */}
+                                    <div className="mix-mode-grid" style={{ gridColumn: '1 / -1' }}>
+                                        <p style={{ color: '#aaa', marginBottom: '10px', fontSize: '0.9rem' }}>
+                                            Tải lên các món đồ bạn muốn mặc cho người mẫu. Bạn có thể chọn váy nguyên bộ, hoặc phối áo và quần riêng lẻ.
+                                        </p>
+                                        
+                                        <div className="extracted-items" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+                                            {/* Row 1: Main Clothes */}
                                             <ImageUploader
-                                                label="Áo"
+                                                label="👗 Váy / Đầm (Nguyên bộ)"
+                                                image={dressImage}
+                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'dress')}
+                                                onRemove={() => handleRemoveGarment('dress')}
+                                            >
+                                                <p style={{fontSize: '0.8rem'}}>Thay toàn bộ trang phục</p>
+                                            </ImageUploader>
+
+                                            <ImageUploader
+                                                label="👚 Áo (Top)"
                                                 image={topImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'top')}
                                                 onRemove={() => handleRemoveGarment('top')}
                                             >
-                                                <p>Chưa có áo</p>
+                                                <p style={{fontSize: '0.8rem'}}>Áo thun, sơ mi, khoác...</p>
                                             </ImageUploader>
+
                                             <ImageUploader
-                                                label="Quần"
+                                                label="👖 Quần / Váy ngắn (Bottom)"
                                                 image={bottomImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'bottom')}
                                                 onRemove={() => handleRemoveGarment('bottom')}
                                             >
-                                                <p>Chưa có quần</p>
+                                                <p style={{fontSize: '0.8rem'}}>Quần jean, chân váy...</p>
                                             </ImageUploader>
+
+                                            {/* Row 2: Accessories */}
                                             <ImageUploader
-                                                label="Giày/Dép"
+                                                label="👠 Giày / Dép"
                                                 image={shoesImage}
                                                 onImageSelect={(e) => handleDirectGarmentUpload(e, 'shoes')}
                                                 onRemove={() => handleRemoveGarment('shoes')}
                                             >
-                                                <p>Chưa có giày</p>
+                                                <p style={{fontSize: '0.8rem'}}>Giày cao gót, sneaker...</p>
+                                            </ImageUploader>
+
+                                            <ImageUploader
+                                                label="💎 Trang sức / Phụ kiện"
+                                                image={jewelryImage}
+                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'jewelry')}
+                                                onRemove={() => handleRemoveGarment('jewelry')}
+                                            >
+                                                <p style={{fontSize: '0.8rem'}}>Dây chuyền, bông tai...</p>
+                                            </ImageUploader>
+
+                                            <ImageUploader
+                                                label="👜 Túi xách"
+                                                image={bagImage}
+                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'bag')}
+                                                onRemove={() => handleRemoveGarment('bag')}
+                                            >
+                                                <p style={{fontSize: '0.8rem'}}>Túi xách tay, đeo chéo...</p>
                                             </ImageUploader>
                                         </div>
 
@@ -1129,6 +1112,23 @@ const App = () => {
                                         <div className="mix-mode-options" style={{ marginTop: '1.5rem', background: '#1e1e1e', padding: '1rem', borderRadius: '12px', border: '1px solid #333' }}>
                                             <label className="uploader-label" style={{marginBottom: '0.8rem', display: 'block'}}>Cài đặt nâng cao:</label>
                                             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                                                 <div className="aspect-ratio-selector" style={{display: 'flex', gap: '8px', flex: '1 1 100%', marginBottom: '10px'}}>
+                                                    <button 
+                                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                        onClick={() => setAspectRatio('9:16')}
+                                                        style={{ flex: 1, justifyContent: 'center' }}
+                                                    >
+                                                        📱 Dọc (9:16)
+                                                    </button>
+                                                    <button 
+                                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                        onClick={() => setAspectRatio('16:9')}
+                                                        style={{ flex: 1, justifyContent: 'center' }}
+                                                    >
+                                                        💻 Ngang (16:9)
+                                                    </button>
+                                                </div>
+
                                                 <button 
                                                     className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
                                                     onClick={() => toggleGenerationSetting('changePose')}
@@ -1180,9 +1180,12 @@ const App = () => {
                                 
                                 {tryOnMode === 'mix' && (
                                     <ul className="status-list">
-                                        <li>Áo: {topImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
-                                        <li>Quần: {bottomImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
-                                        <li>Giày: {shoesImage ? '✅ Đã sẵn sàng' : '❌ Giữ nguyên gốc'}</li>
+                                        <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
+                                        <li>Phụ kiện: {[
+                                            shoesImage ? 'Giày' : '',
+                                            jewelryImage ? 'Trang sức' : '',
+                                            bagImage ? 'Túi' : ''
+                                        ].filter(Boolean).join(', ') || 'Không'}</li>
                                     </ul>
                                 )}
                                 
@@ -1215,7 +1218,7 @@ const App = () => {
                                 disabled={
                                     isGenerating || 
                                     !modelFile || 
-                                    (tryOnMode === 'mix' && !topImage && !bottomImage && !shoesImage) ||
+                                    (tryOnMode === 'mix' && !dressImage && !topImage && !bottomImage && !shoesImage && !jewelryImage && !bagImage) ||
                                     (tryOnMode === 'full' && (!fullOutfitFile || Object.values(fullSetOptions).every(v => !v)))
                                 }
                             >
