@@ -443,19 +443,19 @@ const App = () => {
                 
                 <nav className="main-nav">
                     <button 
-                        className={`nav-item ${activeTab === 'try-on' ? 'active' : ''}`}
+                        className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`}
                         onClick={() => setActiveTab('try-on')}
                     >
                         👗 Virtual Try-On
                     </button>
                     <button 
-                        className={`nav-item ${activeTab === 'fix-skin' ? 'active' : ''}`}
+                        className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`}
                         onClick={() => setActiveTab('fix-skin')}
                     >
                         ✨ Fix Da Nhựa
                     </button>
                     <button 
-                        className={`nav-item special-item ${activeTab === 'breast-lift' ? 'active' : ''}`}
+                        className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`}
                         onClick={() => setActiveTab('breast-lift')}
                     >
                         👙 AI Nâng Ngực

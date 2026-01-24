@@ -79,32 +79,33 @@ body {
     font-size: 1rem;
 }
 
-.nav-item:hover {
-    background: #1f2937;
+/* --- Specific Colors for Nav Items --- */
+
+/* Try On - Blue */
+.nav-item.nav-try-on:hover,
+.nav-item.nav-try-on.active {
+    background: #3b82f6; /* Blue */
     color: white;
+    border-color: #3b82f6;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
 }
 
-.nav-item.active {
-    background: #1f2937;
+/* Fix Skin - Purple */
+.nav-item.nav-fix-skin:hover,
+.nav-item.nav-fix-skin.active {
+    background: #a855f7; /* Purple */
     color: white;
-    border-color: #4b5563;
+    border-color: #a855f7;
+    box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
 }
 
-/* Special Button Style for "AI Nâng Ngực" */
-.nav-item.special-item {
-    background: #d8b4fe; /* Fallback */
-    background: linear-gradient(to right, #c084fc, #e879f9); /* Purple/Pink Gradient */
-    color: black;
-    border: none;
-    font-weight: 600;
-}
-.nav-item.special-item:hover {
-    opacity: 0.9;
-    color: black;
-}
-.nav-item.special-item.active {
-    opacity: 1;
-    box-shadow: 0 0 15px rgba(192, 132, 252, 0.4);
+/* Breast Lift - Pink */
+.nav-item.nav-breast-lift:hover,
+.nav-item.nav-breast-lift.active {
+    background: #ec4899; /* Pink */
+    color: white;
+    border-color: #ec4899;
+    box-shadow: 0 0 15px rgba(236, 72, 153, 0.4);
 }
 
 /* --------------------- */
