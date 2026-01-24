@@ -57,6 +57,11 @@ const App = () => {
     const [skinFixResultImage, setSkinFixResultImage] = useState<string | null>(null);
     const [isFixingSkin, setIsFixingSkin] = useState(false);
 
+    // Breast Lift Mode State
+    const [breastLiftInputImage, setBreastLiftInputImage] = useState<string | null>(null);
+    const [breastLiftResultImage, setBreastLiftResultImage] = useState<string | null>(null);
+    const [isLiftingBreast, setIsLiftingBreast] = useState(false);
+
     // Full Mode State
     const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
     const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
@@ -94,6 +99,20 @@ const App = () => {
             const file = e.target.files[0];
             setFile(file);
             setPreview(URL.createObjectURL(file));
+        }
+    };
+
+    const handleLocalImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setPreview: (s: string | null) => void, setResult: (s: string | null) => void) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                if (typeof ev.target?.result === 'string') {
+                    setPreview(ev.target.result);
+                    setResult(null); // Reset result when new image is uploaded
+                }
+            };
+            reader.readAsDataURL(file);
         }
     };
 
@@ -261,12 +280,11 @@ const App = () => {
         }
     };
 
-    const handleTransferToSkinFix = async (imageSrc: string) => {
-        setSkinFixInputImage(imageSrc);
-        setSkinFixResultImage(null);
-        setActiveTab('fix-skin');
+    // Refactored process logic to be reusable
+    const processSkinFix = async (imageSrc: string) => {
         setIsFixingSkin(true);
         setError(null);
+        setSkinFixResultImage(null);
 
         try {
             if (!process.env.API_KEY) throw new Error("Missing API Key");
@@ -312,6 +330,72 @@ const App = () => {
         } finally {
             setIsFixingSkin(false);
         }
+    };
+
+    const handleTransferToSkinFix = async (imageSrc: string) => {
+        setSkinFixInputImage(imageSrc);
+        setActiveTab('fix-skin');
+        // Auto start workflow
+        await processSkinFix(imageSrc);
+    };
+
+    // Refactored process logic to be reusable
+    const processBreastLift = async (imageSrc: string) => {
+        setIsLiftingBreast(true);
+        setError(null);
+        setBreastLiftResultImage(null);
+
+        try {
+            if (!process.env.API_KEY) throw new Error("Missing API Key");
+
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const modelName = 'gemini-2.5-flash-image'; 
+
+            const base64Data = imageSrc.split(',')[1];
+            const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
+
+            const parts = [
+                {
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: base64Data
+                    }
+                },
+                { text: "Enhance the person's figure by slightly lifting and adding fullness to the chest area for a more aesthetic and attractive look, ensuring it looks natural. Keep the face, skin texture, outfit details, and background exactly unchanged." }
+            ];
+
+            const response = await ai.models.generateContent({
+                model: modelName,
+                contents: { parts: parts },
+            });
+
+            let foundImage = false;
+            if (response.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData) {
+                        const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                        setBreastLiftResultImage(imageUrl);
+                        foundImage = true;
+                    }
+                }
+            }
+             if (!foundImage) {
+                 setError("Không thể xử lý ảnh. Vui lòng thử lại.");
+             }
+
+        } catch (e: any) {
+            console.error(e);
+            setError("Lỗi khi xử lý nâng ngực: " + e.message);
+        } finally {
+            setIsLiftingBreast(false);
+        }
+    };
+
+    const handleTransferToBreastLift = async (imageSrc: string) => {
+        setBreastLiftInputImage(imageSrc);
+        setActiveTab('breast-lift');
+        // Auto start workflow
+        await processBreastLift(imageSrc);
     };
 
     return (
@@ -699,13 +783,34 @@ const App = () => {
 
             {activeTab === 'fix-skin' && (
                 <div className="workflow-container">
+                    <button 
+                        className="btn btn-secondary" 
+                        onClick={() => setActiveTab('try-on')}
+                        style={{alignSelf: 'flex-start', marginBottom: '1rem'}}
+                    >
+                        ← Quay lại Try-On
+                    </button>
                     <section className="step-card full-width">
                         <h2><span className="step-number">✨</span> Fix Da Nhựa (Skin Enhancer)</h2>
                         <div className="dual-upload-container" style={{alignItems: 'start'}}>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
-                                <img src={skinFixInputImage || ''} style={{width: '100%', borderRadius: '8px'}} alt="Original" />
-                                {!skinFixInputImage && <p style={{color: '#555', textAlign: 'center', padding: '20px'}}>Chưa có ảnh</p>}
+                                <ImageUploader
+                                    image={skinFixInputImage}
+                                    onImageSelect={(e) => handleLocalImageUpload(e, setSkinFixInputImage, setSkinFixResultImage)}
+                                    onRemove={() => { setSkinFixInputImage(null); setSkinFixResultImage(null); }}
+                                >
+                                    <p>Tải ảnh để fix da</p>
+                                </ImageUploader>
+                                {skinFixInputImage && !isFixingSkin && !skinFixResultImage && (
+                                     <button 
+                                        className="btn btn-primary" 
+                                        style={{width: '100%', marginTop: '10px'}}
+                                        onClick={() => processSkinFix(skinFixInputImage)}
+                                     >
+                                        Bắt đầu Fix Da
+                                     </button>
+                                )}
                             </div>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
@@ -719,6 +824,13 @@ const App = () => {
                                         <img src={skinFixResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Fixed" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
                                             <a href={skinFixResultImage} download="fixed_skin.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                             <button 
+                                                className="btn" 
+                                                style={{ background: 'linear-gradient(to right, #c084fc, #e879f9)', color: 'black', border: 'none', fontWeight: 600 }}
+                                                onClick={() => handleTransferToBreastLift(skinFixResultImage)}
+                                            >
+                                                👙 AI Nâng Ngực
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (
@@ -734,12 +846,56 @@ const App = () => {
             
             {activeTab === 'breast-lift' && (
                 <div className="workflow-container">
+                    <button 
+                        className="btn btn-secondary" 
+                        onClick={() => setActiveTab('try-on')}
+                        style={{alignSelf: 'flex-start', marginBottom: '1rem'}}
+                    >
+                        ← Quay lại Try-On
+                    </button>
                     <section className="step-card full-width">
-                         <h2><span className="step-number">👙</span> AI Nâng Ngực</h2>
-                         <div style={{padding: '40px', textAlign: 'center', color: '#888'}}>
-                            <p style={{fontSize: '1.1rem'}}>Tính năng đang được phát triển.</p>
-                            <p>Vui lòng quay lại sau.</p>
-                         </div>
+                         <h2><span className="step-number">👙</span> AI Nâng Ngực (Body Enhancer)</h2>
+                         <div className="dual-upload-container" style={{alignItems: 'start'}}>
+                            <div className="upload-box">
+                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
+                                <ImageUploader
+                                    image={breastLiftInputImage}
+                                    onImageSelect={(e) => handleLocalImageUpload(e, setBreastLiftInputImage, setBreastLiftResultImage)}
+                                    onRemove={() => { setBreastLiftInputImage(null); setBreastLiftResultImage(null); }}
+                                >
+                                    <p>Tải ảnh để nâng ngực</p>
+                                </ImageUploader>
+                                {breastLiftInputImage && !isLiftingBreast && !breastLiftResultImage && (
+                                     <button 
+                                        className="btn btn-primary" 
+                                        style={{width: '100%', marginTop: '10px'}}
+                                        onClick={() => processBreastLift(breastLiftInputImage)}
+                                     >
+                                        Bắt đầu Nâng Ngực
+                                     </button>
+                                )}
+                            </div>
+                            <div className="upload-box">
+                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
+                                {isLiftingBreast ? (
+                                    <div style={{textAlign: 'center', padding: '40px'}}>
+                                        <div className="spinner"></div>
+                                        <p style={{marginTop: '15px', color: '#888'}}>Đang chỉnh sửa hình thể...</p>
+                                    </div>
+                                ) : breastLiftResultImage ? (
+                                    <div>
+                                        <img src={breastLiftResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Lifted" />
+                                        <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
+                                            <a href={breastLiftResultImage} download="body_enhanced.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div style={{padding: '40px', textAlign: 'center', color: '#666'}}>
+                                        Chưa có kết quả
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </section>
                 </div>
             )}
