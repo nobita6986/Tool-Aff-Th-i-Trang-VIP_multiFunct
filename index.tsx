@@ -525,18 +525,19 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt for "Significant/Forceful" Change
-                { text: "TASK: Digital Body Morphing - Significant Breast Augmentation.\n" +
-                  "OBJECTIVE: Transform the subject's upper body to have a visibly larger, voluptuous bust size (Increase volume by +3 cup sizes).\n\n" +
-                  "VISUAL REQUIREMENTS:\n" +
-                  "1. **GEOMETRY EXPANSION:** The chest silhouette MUST expand outwards. Do not just shade inside the existing lines; change the outline of the body to be much curvier.\n" +
-                  "2. **CLOTHING TENSION:** Redraw the clothing to look tight and stretched across the chest. The fabric should conform closely to the new large spherical volume.\n" +
-                  "3. **CLEAVAGE & DEPTH:** Create deep, high-contrast shadows between the breasts to demonstrate separation and mass.\n" +
-                  "4. **WAIST RATIO:** Ensure the waist looks slim in comparison to the new chest width, creating an extreme hourglass ratio.\n\n" +
-                  "STRICT PRESERVATION:\n" +
-                  "- **FACE LOCK:** The face, hair, and head shape must remain IDENTICAL to the original.\n" +
-                  "- **BACKGROUND:** Do not distort the background.\n" +
-                  "- **REALISM:** High-quality photorealism only."
+                // Updated Prompt: Digital Plastic Surgery Mode (Extreme/Obvious Change)
+                { text: "ACT AS: Expert Photo Retoucher & Digital Plastic Surgeon.\n" +
+                  "TASK: HEAVY Breast Augmentation (Boob Job) Simulation.\n" +
+                  "GOAL: Make the subject look significantly more voluptuous with a large, heavy bust. The change must be INSTANTLY obvious.\n\n" +
+                  "EDITING INSTRUCTIONS:\n" +
+                  "1. **VOLUME & SIZE:** Increase breast size by at least +4 cup sizes. They should look large, heavy, and full-round.\n" +
+                  "2. **DEEP CLEAVAGE:** Create a deep, prominent 'Y' or 'I' shaped cleavage line. Shadows must be dark and defined between the breasts.\n" +
+                  "3. **FABRIC PHYSICS (CRITICAL):** The clothing MUST look tighter. If it's a dress/top, it must stretch and curve *under* the breasts and pull tight across the chest. The neckline should be filled out completely.\n" +
+                  "4. **SILHOUETTE CHANGE:** Push the outer boundary of the chest outward. Do not stay within the original body lines. Widen the chest area significantly.\n\n" +
+                  "STRICT CONSTRAINTS:\n" +
+                  "- **FACE IS SACRED:** Do NOT touch the face, chin, or hair. Copy-paste the original face if needed.\n" +
+                  "- **BACKGROUND:** Keep background stable.\n" +
+                  "- **STYLE:** Keep the same clothing pattern/color, just change its fit/shape."
                 }
             ];
 
