@@ -435,9 +435,10 @@ const App = () => {
         try {
             const parts: any[] = [];
             
+            // 1. Model Image (The most critical input)
             if (modelFile) {
                 const modelB64 = await fileToBase64(modelFile);
-                parts.push({ text: "IMAGE A [TARGET MODEL]: This is the main subject. Use this person's face and body characteristics." });
+                parts.push({ text: "IMAGE A [TARGET MODEL]: This is the PRIMARY image. You must preserve the identity (face), body shape, and skin tone of this person." });
                 parts.push({
                     inlineData: {
                         mimeType: modelFile.type,
@@ -446,9 +447,10 @@ const App = () => {
                 });
             }
 
+            // 2. Clothing Image(s)
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
-                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. This is the PRIMARY source for the clothing design, pattern, and color. Ignore the person in this image." });
+                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the garment design, texture, and details from this image. Do NOT use the person/face from this image." });
                 parts.push({
                     inlineData: {
                         mimeType: fullOutfitFile.type,
@@ -460,7 +462,7 @@ const App = () => {
                 if (referenceFiles.length > 0) {
                     for (let i = 0; i < referenceFiles.length; i++) {
                         const refB64 = await fileToBase64(referenceFiles[i]);
-                        parts.push({ text: `IMAGE [REFERENCE OUTFIT ${i+1}]: Auxiliary reference for the clothing in IMAGE B. Use these ONLY for understanding the 3D structure, texture, or back/side details. Priority: IMAGE B > Reference Images.` });
+                        parts.push({ text: `IMAGE [REFERENCE OUTFIT ${i+1}]: Auxiliary reference for the clothing details in IMAGE B.` });
                         parts.push({
                             inlineData: {
                                 mimeType: referenceFiles[i].type,
@@ -474,7 +476,7 @@ const App = () => {
                     if (file) {
                         const f = file as File;
                         const b64 = await fileToBase64(f);
-                        parts.push({ text: `IMAGE [CLOTHING ITEM - ${key.toUpperCase()}]: Use this item.` });
+                        parts.push({ text: `IMAGE [CLOTHING ITEM - ${key.toUpperCase()}]: Wear this item.` });
                         parts.push({
                             inlineData: {
                                 mimeType: f.type,
@@ -485,17 +487,18 @@ const App = () => {
                 }
             }
 
-            let textPrompt = "TASK: Virtual Try-On & Fashion Compositing. \n";
-            
-            if (generationSettings.changePose) {
-                textPrompt += "GOAL: Generate a NEW image of the person from IMAGE A (Identity) wearing the clothing from IMAGE B, but in a NEW DYNAMIC POSE.\n";
-            } else {
-                textPrompt += "GOAL: Composite the clothing from IMAGE B onto the person in IMAGE A, strictly maintaining the original pose and composition.\n";
-            }
+            // 3. Construct the Master Prompt
+            let textPrompt = "TASK: Professional Virtual Try-On & Photorealistic Compositing.\n";
+            textPrompt += "ACTION: Dress the person in IMAGE A [TARGET MODEL] with the clothing from IMAGE B (or the provided clothing items).\n\n";
 
-            textPrompt += "\nCRITICAL IDENTITY RULES:\n";
-            textPrompt += "1. IDENTITY: You MUST preserve the face and body shape of the person in IMAGE A. Do NOT use the face from IMAGE B.\n";
-            textPrompt += "2. CLOTHING: Replace the clothes on the person in IMAGE A with the clothes visible in IMAGE B. Fit them naturally.\n";
+            textPrompt += "🔴 STRICT IDENTITY & ANATOMY RULES (HIGHEST PRIORITY):\n";
+            textPrompt += "1. **FACE INTEGRITY**: You MUST keep the face of the person in IMAGE A exactly as is. **Do NOT swap faces.** Do NOT morph the face with IMAGE B. The output face must be indistinguishable from IMAGE A.\n";
+            textPrompt += "2. **BODY SHAPE**: Preserve the exact body proportions, height, and weight of the person in IMAGE A. Do not make them thinner or curvier unless explicitly asked.\n";
+            textPrompt += "3. **SKIN TONE**: Maintain the exact skin tone and texture of the person in IMAGE A.\n\n";
+
+            textPrompt += "🔵 CLOTHING INTEGRATION:\n";
+            textPrompt += "- Warp and fit the clothing from IMAGE B naturally onto the body of IMAGE A.\n";
+            textPrompt += "- Preserve realistic fabric folds, textures, and lighting from the clothing source.\n";
             
             if (tryOnMode === 'full') {
                  const activeOptions = Object.entries(fullSetOptions)
@@ -503,36 +506,37 @@ const App = () => {
                     .map(([key]) => key);
                 
                 if (activeOptions.length > 0) {
-                     textPrompt += `3. TARGETED CHANGE: Specifically change the [${activeOptions.join(', ')}] on the model. Keep other accessories from IMAGE A if possible.\n`;
-                } else {
-                     textPrompt += "3. CHANGE: Replace the entire outfit.\n";
+                     textPrompt += `- **TARGETED REPLACEMENT**: ONLY replace the [${activeOptions.join(', ')}]. Keep other original items (hair accessories, etc.) from IMAGE A if they don't conflict.\n`;
                 }
             }
 
-            textPrompt += "\nGENERATION SETTINGS (MUST FOLLOW):\n";
+            textPrompt += "\n🟢 GENERATION SETTINGS:\n";
+            
+            // POSE LOGIC
             if (generationSettings.changePose) {
-                textPrompt += "- POSE: **CHANGE THE POSE**. Do NOT use the pose from IMAGE A. Generate a confident, high-fashion model pose suitable for the outfit.\n";
+                textPrompt += "- **POSE**: Generate a NEW dynamic, fashion-forward pose. However, the FACE and BODY ID must still match IMAGE A.\n";
             } else {
-                textPrompt += "- POSE: **STRICTLY PRESERVE** the pose from IMAGE A. Head angle, arm position, and leg position must remain the same.\n";
+                textPrompt += "- **POSE**: **STRICTLY PRESERVE** the original pose, arm placement, and head angle of IMAGE A. This acts like an advanced inpainting task.\n";
             }
             
             // BACKGROUND LOGIC
             if (generationSettings.transparentBackground) {
-                textPrompt += "- BACKGROUND: **SOLID WHITE (Hex #FFFFFF)**. CRITICAL: Do NOT render any shadows, cast shadows, or floor reflections. The background must be completely flat white to allow for alpha removal via post-processing.\n";
+                textPrompt += "- **BACKGROUND**: **SOLID WHITE (Hex #FFFFFF)**. CRITICAL: Render on a flat white background. NO shadows, NO floor reflections, NO noise. This is for background removal.\n";
             } else if (generationSettings.changeBackground) {
-                textPrompt += "- BACKGROUND: **CHANGE THE BACKGROUND**. Do NOT use the background from IMAGE A. Place the subject in a clean, professional studio environment (e.g., solid color, soft gradient, or lifestyle setting).\n";
+                textPrompt += "- **BACKGROUND**: Place the subject in a completely new, high-end professional studio setting (soft lighting, neutral tones).\n";
             } else {
-                textPrompt += "- BACKGROUND: **KEEP BACKGROUND**. Retain the background environment from IMAGE A.\n";
+                textPrompt += "- **BACKGROUND**: Keep the original background from IMAGE A exactly as is.\n";
             }
 
+            // FULL BODY LOGIC
             if (generationSettings.generateFullBody) {
-                textPrompt += "- FRAMING: **FULL BODY SHOT**. You MUST generate a full-body image (Head to Toe). If IMAGE A is cropped (e.g., half-body), you must HALLUCINATE/GENERATE the legs and shoes coherently to complete the look.\n";
+                textPrompt += "- **FRAMING**: FULL BODY. If IMAGE A is a crop, realistically generate the missing legs/shoes to match the style.\n";
             } else {
-                textPrompt += "- FRAMING: Respect the original framing/crop of IMAGE A.\n";
+                textPrompt += "- **FRAMING**: Maintain the exact cropping and aspect ratio of IMAGE A.\n";
             }
 
             textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            textPrompt += "\nStyle: Photorealistic, 8k, detailed texture, realistic lighting.";
+            textPrompt += "\nStyle: 8k resolution, Photorealistic, Commercial Fashion Photography, High Detail.";
 
             parts.push({ text: textPrompt });
 
