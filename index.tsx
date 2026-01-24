@@ -85,6 +85,9 @@ const App = () => {
     // Full Mode State
     const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
     const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
+    const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+    const [referencePreviews, setReferencePreviews] = useState<string[]>([]);
+
     const [modelFile, setModelFile] = useState<File | null>(null);
     const [modelPreview, setModelPreview] = useState<string | null>(null);
     
@@ -110,7 +113,8 @@ const App = () => {
         aspectRatio: '9:16',
         changePose: false,
         changeBackground: false,
-        generateFullBody: false
+        generateFullBody: false,
+        transparentBackground: false
     });
 
     // --- INITIALIZATION & API LOGIC ---
@@ -234,6 +238,26 @@ const App = () => {
         }
     };
 
+    const handleReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            if (referenceFiles.length >= 3) {
+                alert("Tối đa 3 ảnh tham khảo.");
+                return;
+            }
+            const file = e.target.files[0];
+            const url = URL.createObjectURL(file);
+            setReferenceFiles(prev => [...prev, file]);
+            setReferencePreviews(prev => [...prev, url]);
+            
+            e.target.value = ''; 
+        }
+    };
+
+    const removeReferenceImage = (index: number) => {
+        setReferenceFiles(prev => prev.filter((_, i) => i !== index));
+        setReferencePreviews(prev => prev.filter((_, i) => i !== index));
+    };
+
     const handleLocalImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setPreview: (s: string | null) => void, setResult: (s: string | null) => void) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -257,7 +281,16 @@ const App = () => {
     };
 
     const toggleGenerationSetting = (key: keyof typeof generationSettings) => {
-        setGenerationSettings(prev => ({ ...prev, [key]: !prev[key] }));
+        setGenerationSettings(prev => {
+            const newState = { ...prev, [key]: !prev[key] };
+            // Conflict handling: Transparent implies Change Background implicitly in UI logic, but here we can just update state.
+            // If transparent is turned ON, we might want to uncheck "Change Background" to avoid visual clutter, but prompt logic handles priority.
+            if (key === 'transparentBackground' && newState.transparentBackground) {
+                // Optional: Force changeBackground off if transparent is on, or just let prompt logic handle it.
+                // newState.changeBackground = false; 
+            }
+            return newState;
+        });
     };
 
     const handleDirectGarmentUpload = (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
@@ -327,13 +360,27 @@ const App = () => {
 
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
-                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. Ignore the person in this image." });
+                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the outfit from this image. This is the PRIMARY source for the clothing design, pattern, and color. Ignore the person in this image." });
                 parts.push({
                     inlineData: {
                         mimeType: fullOutfitFile.type,
                         data: outfitB64
                     }
                 });
+
+                // Add Reference Images if available
+                if (referenceFiles.length > 0) {
+                    for (let i = 0; i < referenceFiles.length; i++) {
+                        const refB64 = await fileToBase64(referenceFiles[i]);
+                        parts.push({ text: `IMAGE [REFERENCE OUTFIT ${i+1}]: Auxiliary reference for the clothing in IMAGE B. Use these ONLY for understanding the 3D structure, texture, or back/side details. Priority: IMAGE B > Reference Images.` });
+                        parts.push({
+                            inlineData: {
+                                mimeType: referenceFiles[i].type,
+                                data: refB64
+                            }
+                        });
+                    }
+                }
             } else if (tryOnMode === 'mix') {
                 for (const [key, file] of Object.entries(mixFiles)) {
                     if (file) {
@@ -380,11 +427,16 @@ const App = () => {
             } else {
                 textPrompt += "- POSE: **STRICTLY PRESERVE** the pose from IMAGE A. Head angle, arm position, and leg position must remain the same.\n";
             }
-            if (generationSettings.changeBackground) {
+            
+            // BACKGROUND LOGIC
+            if (generationSettings.transparentBackground) {
+                textPrompt += "- BACKGROUND: **ISOLATED SUBJECT**. Generate the subject on a clean, PURE WHITE background (Hex #FFFFFF) with no shadows or environmental details, strictly isolated for easy background removal.\n";
+            } else if (generationSettings.changeBackground) {
                 textPrompt += "- BACKGROUND: **CHANGE THE BACKGROUND**. Do NOT use the background from IMAGE A. Place the subject in a clean, professional studio environment (e.g., solid color, soft gradient, or lifestyle setting).\n";
             } else {
                 textPrompt += "- BACKGROUND: **KEEP BACKGROUND**. Retain the background environment from IMAGE A.\n";
             }
+
             if (generationSettings.generateFullBody) {
                 textPrompt += "- FRAMING: **FULL BODY SHOT**. You MUST generate a full-body image (Head to Toe). If IMAGE A is cropped (e.g., half-body), you must HALLUCINATE/GENERATE the legs and shoes coherently to complete the look.\n";
             } else {
@@ -448,7 +500,6 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // High-End Beauty Prompt (Revised for Systematic Physics-Based Restoration)
                 { text: "TASK: Advanced Photorealistic Skin Restoration (De-Plasticizing).\n" +
                   "CONTEXT: The input image is an AI-generated portrait with 'plastic/waxy' skin artifacts.\n" +
                   "OBJECTIVE: Restore physics-based skin properties without altering the subject's identity.\n\n" +
@@ -468,7 +519,6 @@ const App = () => {
                 }
             ];
 
-            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
                 const modelName = 'gemini-2.5-flash-image';
@@ -525,23 +575,22 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt: Digital Plastic Surgery Mode (Extreme/Obvious Change)
-                { text: "ACT AS: Expert Photo Retoucher & Digital Plastic Surgeon.\n" +
-                  "TASK: HEAVY Breast Augmentation (Boob Job) Simulation.\n" +
-                  "GOAL: Make the subject look significantly more voluptuous with a large, heavy bust. The change must be INSTANTLY obvious.\n\n" +
-                  "EDITING INSTRUCTIONS:\n" +
-                  "1. **VOLUME & SIZE:** Increase breast size by at least +4 cup sizes. They should look large, heavy, and full-round.\n" +
-                  "2. **DEEP CLEAVAGE:** Create a deep, prominent 'Y' or 'I' shaped cleavage line. Shadows must be dark and defined between the breasts.\n" +
-                  "3. **FABRIC PHYSICS (CRITICAL):** The clothing MUST look tighter. If it's a dress/top, it must stretch and curve *under* the breasts and pull tight across the chest. The neckline should be filled out completely.\n" +
-                  "4. **SILHOUETTE CHANGE:** Push the outer boundary of the chest outward. Do not stay within the original body lines. Widen the chest area significantly.\n\n" +
-                  "STRICT CONSTRAINTS:\n" +
-                  "- **FACE IS SACRED:** Do NOT touch the face, chin, or hair. Copy-paste the original face if needed.\n" +
-                  "- **BACKGROUND:** Keep background stable.\n" +
-                  "- **STYLE:** Keep the same clothing pattern/color, just change its fit/shape."
+                { text: "TASK: Digital Body Transformation - Maximum Augmentation.\n" +
+                  "OBJECTIVE: Alter the subject's physique to have a significantly larger, voluptuous bust (Cup size increase: +5).\n\n" +
+
+                  "VISUAL INSTRUCTIONS:\n" +
+                  "1. **OVERRIDE SILHOUETTE:** You MUST expand the boundaries of the upper body. Do not constrain the new shape to the old clothing lines. Draw a NEW, EXPANDED chest silhouette.\n" +
+                  "2. **CLOTHING PHYSICS:** The clothes must look TIGHT. Render tension lines, stretching fabric, and stress on buttons/seams. The fabric should cling to the under-curve of the chest.\n" +
+                  "3. **SHADING & VOLUME:** Create deep cleavage shadows. Add specular highlights on the upper chest to emphasize spherical volume.\n" +
+                  "4. **PROPORTIONS:** Create an exaggerated 'Hourglass' figure by widening the chest and keeping the waist slim.\n\n" +
+
+                  "STRICT RULES:\n" +
+                  "- **PRESERVE IDENTITY:** Face, hair, and head MUST remain 100% original.\n" +
+                  "- **PRESERVE BACKGROUND:** Do not warp the background.\n" +
+                  "- **OUTPUT STYLE:** Photorealistic, high definition."
                 }
             ];
 
-            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
                 const modelName = 'gemini-2.5-flash-image';
@@ -738,7 +787,6 @@ const App = () => {
              
              {activeTab === 'try-on' && (
                 <>
-                    {/* Global Mode Switcher for Try-On */}
                     <div className="mode-switcher-container">
                         <button 
                             className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
@@ -756,24 +804,58 @@ const App = () => {
 
                     <main className="workflow-container">
                         {tryOnMode === 'full' ? (
-                            /* --- FULL MODE LAYOUT --- */
                             <>
                                 <section className="step-card full-width">
                                     <h2><span className="step-number">1</span> Cấu hình & Dữ liệu</h2>
                                     <div className="garment-source-container">
                                         <div className="full-mode-container">
-                                            {/* 1. Images Row: Outfit + Model Side by Side */}
                                             <div className="dual-upload-container">
                                                 <div className="upload-box">
                                                     <ImageUploader
-                                                        label="1. Ảnh Set Đồ"
+                                                        label="1. Ảnh Set Đồ (Chính)"
                                                         image={fullOutfitPreview}
                                                         onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
                                                         onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
                                                     >
                                                         <p>Tải ảnh chứa nguyên set đồ</p>
                                                     </ImageUploader>
+
+                                                    <div className="reference-section">
+                                                        <div className="reference-header">
+                                                            <label>Ảnh tham khảo (Tùy chọn)</label>
+                                                            <span>{referenceFiles.length}/3</span>
+                                                        </div>
+                                                        
+                                                        <div className="reference-grid">
+                                                            {referencePreviews.map((src, idx) => (
+                                                                <div key={idx} className="reference-item">
+                                                                    <img src={src} />
+                                                                    <button onClick={() => removeReferenceImage(idx)}>×</button>
+                                                                </div>
+                                                            ))}
+                                                            
+                                                            {referenceFiles.length < 3 && (
+                                                                <div 
+                                                                    className="reference-add-btn"
+                                                                    onClick={() => document.getElementById('ref-upload')?.click()}
+                                                                >
+                                                                    +
+                                                                </div>
+                                                            )}
+                                                            <input 
+                                                                id="ref-upload" 
+                                                                type="file" 
+                                                                accept="image/*" 
+                                                                onChange={handleReferenceUpload} 
+                                                                style={{display: 'none'}} 
+                                                            />
+                                                        </div>
+                                                        <p className="reference-note">
+                                                            *Upload thêm góc nhìn khác để AI hiểu rõ hơn.
+                                                        </p>
+                                                    </div>
                                                 </div>
+
                                                 <div className="upload-box">
                                                     <ImageUploader
                                                         label="2. Ảnh Người Mẫu"
@@ -786,10 +868,8 @@ const App = () => {
                                                 </div>
                                             </div>
                                             
-                                            {/* 2. Settings Row */}
                                             <div className="settings-panel">
                                                 <div className="settings-columns">
-                                                    {/* Item Selection Group */}
                                                     <div className="settings-card">
                                                         <div className="settings-card-header">
                                                             <label>3. Chọn mục cần thay:</label>
@@ -828,7 +908,6 @@ const App = () => {
                                                         </div>
                                                     </div>
 
-                                                    {/* Advanced Settings Group */}
                                                     <div className="settings-card">
                                                         <div className="settings-card-header">
                                                             <label>4. Cài đặt tạo ảnh:</label>
@@ -850,27 +929,41 @@ const App = () => {
                                                                     </button>
                                                                 </div>
 
-                                                                <button 
-                                                                    className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                                    onClick={() => toggleGenerationSetting('changePose')}
-                                                                >
-                                                                    <span>💃 Thay đổi tư thế</span>
-                                                                    {generationSettings.changePose && <span>✓</span>}
-                                                                </button>
-                                                                <button 
-                                                                    className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                                    onClick={() => toggleGenerationSetting('changeBackground')}
-                                                                >
-                                                                    <span>🏞️ Đổi bối cảnh</span>
-                                                                    {generationSettings.changeBackground && <span>✓</span>}
-                                                                </button>
-                                                                <button 
-                                                                    className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                                    onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                                >
-                                                                    <span>🧍 Tạo ảnh toàn thân</span>
-                                                                    {generationSettings.generateFullBody && <span>✓</span>}
-                                                                </button>
+                                                                <div className="settings-grid-2col">
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                                        onClick={() => toggleGenerationSetting('changePose')}
+                                                                    >
+                                                                        <span>💃 Đổi tư thế</span>
+                                                                        {generationSettings.changePose && <span>✓</span>}
+                                                                    </button>
+                                                                    
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                                                        onClick={() => toggleGenerationSetting('generateFullBody')}
+                                                                    >
+                                                                        <span>🧍 Toàn thân</span>
+                                                                        {generationSettings.generateFullBody && <span>✓</span>}
+                                                                    </button>
+
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                                        onClick={() => toggleGenerationSetting('changeBackground')}
+                                                                        disabled={generationSettings.transparentBackground}
+                                                                        style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}
+                                                                    >
+                                                                        <span>🏞️ Đổi nền</span>
+                                                                        {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
+                                                                    </button>
+
+                                                                    <button 
+                                                                        className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
+                                                                        onClick={() => toggleGenerationSetting('transparentBackground')}
+                                                                    >
+                                                                        <span>🔳 Nền rỗng</span>
+                                                                        {generationSettings.transparentBackground && <span>✓</span>}
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -881,9 +974,7 @@ const App = () => {
                                 </section>
                             </>
                         ) : (
-                            /* --- MIX MODE LAYOUT (Reordered) --- */
                             <>
-                                {/* Step 1: Model (Moved to Top) */}
                                 <section className="step-card full-width">
                                     <h2><span className="step-number">1</span> Ảnh Người Mẫu</h2>
                                     <div className="model-upload-center">
@@ -896,7 +987,6 @@ const App = () => {
                                     </div>
                                 </section>
 
-                                {/* Step 2: Items (Smaller Grid) */}
                                 <section className="step-card full-width">
                                     <h2><span className="step-number">2</span> Chọn Đồ Mix & Match</h2>
                                     <div className="mix-mode-grid">
@@ -905,7 +995,6 @@ const App = () => {
                                         </p>
                                         
                                         <div className="extracted-items">
-                                            {/* Row 1: Main Clothes */}
                                             <ImageUploader
                                                 label="👗 Váy (Bộ)"
                                                 image={dressImage}
@@ -927,7 +1016,6 @@ const App = () => {
                                                 onRemove={() => handleRemoveGarment('bottom')}
                                             />
 
-                                            {/* Row 2: Accessories */}
                                             <ImageUploader
                                                 label="👠 Giày"
                                                 image={shoesImage}
@@ -950,7 +1038,6 @@ const App = () => {
                                             />
                                         </div>
 
-                                        {/* Mix Mode Advanced Options */}
                                         <div className="mix-mode-options">
                                             <label className="uploader-label" style={{marginBottom: '0.8rem', display: 'block'}}>Cài đặt nâng cao:</label>
                                             <div className="mix-mode-actions">
@@ -968,25 +1055,34 @@ const App = () => {
                                                         💻 Ngang (16:9)
                                                     </button>
                                                 </div>
-
-                                                <button 
-                                                    className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('changePose')}
-                                                >
-                                                    💃 Thay đổi tư thế
-                                                </button>
-                                                <button 
-                                                    className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('changeBackground')}
-                                                >
-                                                    🏞️ Đổi bối cảnh
-                                                </button>
-                                                <button 
-                                                    className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                >
-                                                    🧍 Tạo ảnh toàn thân
-                                                </button>
+                                                
+                                                <div className="settings-grid-2col" style={{width: '100%'}}>
+                                                    <button 
+                                                        className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                        onClick={() => toggleGenerationSetting('changePose')}
+                                                    >
+                                                        💃 Đổi tư thế
+                                                    </button>
+                                                    <button 
+                                                        className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                                        onClick={() => toggleGenerationSetting('generateFullBody')}
+                                                    >
+                                                        🧍 Toàn thân
+                                                    </button>
+                                                    <button 
+                                                        className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                        onClick={() => toggleGenerationSetting('changeBackground')}
+                                                        disabled={generationSettings.transparentBackground}
+                                                    >
+                                                        🏞️ Đổi nền
+                                                    </button>
+                                                     <button 
+                                                        className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
+                                                        onClick={() => toggleGenerationSetting('transparentBackground')}
+                                                    >
+                                                        🔳 Nền rỗng
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -994,7 +1090,6 @@ const App = () => {
                             </>
                         )}
 
-                        {/* Step 3: Finalize (Common for both, Full Width) */}
                         <section className="step-card full-width">
                             <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
                             <div className={`finalize-box ${tryOnMode === 'full' ? 'balanced-layout' : ''}`}>
@@ -1016,6 +1111,7 @@ const App = () => {
                                         <ul className="status-list balanced-list">
                                             <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
                                             <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                            {referenceFiles.length > 0 && <li>Ảnh tham khảo: {referenceFiles.length} ảnh</li>}
                                             <li>Thay: 
                                                 {[
                                                     fullSetOptions.clothing ? 'Áo/Quần' : '',
@@ -1029,7 +1125,7 @@ const App = () => {
 
                                     <div className="generation-settings-summary">
                                         {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
-                                        {generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền'} • 
+                                        {generationSettings.transparentBackground ? '✅ Nền trắng' : (generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền')} • 
                                         {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
                                         {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
                                     </div>
@@ -1050,7 +1146,6 @@ const App = () => {
                             </div>
                         </section>
 
-                        {/* Result Section */}
                         {(finalImage || isGenerating) && (
                             <section className="step-card full-width">
                                 <h2><span className="step-number">✨</span> Kết Quả</h2>
