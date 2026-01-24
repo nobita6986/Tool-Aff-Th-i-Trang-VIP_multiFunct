@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
@@ -46,6 +46,9 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
 
 const App = () => {
     // State definitions to fix missing variable errors
+    const [apiKey, setApiKey] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
+    
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
     const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,22 @@ const App = () => {
         changeBackground: false,
         generateFullBody: false
     });
+
+    // Load API Key on Mount
+    useEffect(() => {
+        const storedKey = localStorage.getItem('gemini_api_key');
+        if (storedKey) {
+            setApiKey(storedKey);
+        } else if (process.env.API_KEY) {
+            setApiKey(process.env.API_KEY);
+        }
+    }, []);
+
+    const saveApiKey = () => {
+        localStorage.setItem('gemini_api_key', apiKey);
+        setShowSettings(false);
+        setError(null);
+    };
 
     // Handlers
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
@@ -174,8 +193,9 @@ const App = () => {
     };
 
     const handleGenerateTryOn = async () => {
-        if (!process.env.API_KEY) {
-            setError("API Key is missing in environment variables.");
+        if (!apiKey) {
+            setError("Vui lòng nhập API Key trong phần Cài đặt AI để tiếp tục.");
+            setShowSettings(true);
             return;
         }
 
@@ -184,7 +204,7 @@ const App = () => {
         setError(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: apiKey });
             const modelName = 'gemini-2.5-flash-image'; 
             
             const parts: any[] = [];
@@ -274,7 +294,7 @@ const App = () => {
 
         } catch (err: any) {
             console.error("Generation error:", err);
-            setError("Failed to generate image: " + err.message);
+            setError("Lỗi tạo ảnh: " + (err.message || "Vui lòng kiểm tra API Key."));
         } finally {
             setIsGenerating(false);
         }
@@ -282,14 +302,18 @@ const App = () => {
 
     // Refactored process logic to be reusable
     const processSkinFix = async (imageSrc: string) => {
+        if (!apiKey) {
+            setError("Vui lòng nhập API Key để sử dụng tính năng này.");
+            setShowSettings(true);
+            return;
+        }
+
         setIsFixingSkin(true);
         setError(null);
         setSkinFixResultImage(null);
 
         try {
-            if (!process.env.API_KEY) throw new Error("Missing API Key");
-
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: apiKey });
             const modelName = 'gemini-2.5-flash-image'; 
 
             const base64Data = imageSrc.split(',')[1];
@@ -341,14 +365,18 @@ const App = () => {
 
     // Refactored process logic to be reusable
     const processBreastLift = async (imageSrc: string) => {
+        if (!apiKey) {
+            setError("Vui lòng nhập API Key để sử dụng tính năng này.");
+            setShowSettings(true);
+            return;
+        }
+
         setIsLiftingBreast(true);
         setError(null);
         setBreastLiftResultImage(null);
 
         try {
-            if (!process.env.API_KEY) throw new Error("Missing API Key");
-
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: apiKey });
             const modelName = 'gemini-2.5-flash-image'; 
 
             const base64Data = imageSrc.split(',')[1];
@@ -405,7 +433,12 @@ const App = () => {
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
                 <div style={{marginBottom: '20px'}}>
-                    <button className="settings-btn">⚙️ Cài đặt AI</button>
+                    <button 
+                        className="settings-btn"
+                        onClick={() => setShowSettings(true)}
+                    >
+                        ⚙️ Cài đặt AI
+                    </button>
                 </div>
                 
                 <nav className="main-nav">
@@ -432,6 +465,32 @@ const App = () => {
 
              {error && <div className="error-message">{error}</div>}
              
+             {/* Settings Modal */}
+            {showSettings && (
+                <div className="modal-overlay">
+                    <div className="modal-content">
+                        <h3>Cài đặt API Key</h3>
+                        <p style={{color: '#aaa', fontSize: '0.9rem', marginBottom: '15px'}}>
+                            Nhập Google Gemini API Key của bạn để sử dụng. Key sẽ được lưu trên trình duyệt của bạn.
+                        </p>
+                        <input 
+                            type="password" 
+                            value={apiKey} 
+                            onChange={(e) => setApiKey(e.target.value)}
+                            placeholder="Nhập API Key (bắt đầu bằng AIza...)"
+                            className="api-input"
+                        />
+                        <div className="modal-actions">
+                            <button className="btn btn-secondary" onClick={() => setShowSettings(false)}>Đóng</button>
+                            <button className="btn btn-primary" onClick={saveApiKey}>Lưu & Áp dụng</button>
+                        </div>
+                        <p style={{marginTop: '15px', fontSize: '0.8rem'}}>
+                            <a href="https://aistudio.google.com/app/apikey" target="_blank" style={{color: '#60a5fa', textDecoration: 'none'}}>👉 Lấy API Key miễn phí tại đây</a>
+                        </p>
+                    </div>
+                </div>
+            )}
+
              {activeTab === 'try-on' && (
                 <>
                     {/* Global Mode Switcher for Try-On */}
