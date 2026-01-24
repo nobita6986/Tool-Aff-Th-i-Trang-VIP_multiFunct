@@ -45,7 +45,7 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
 };
 
 const App = () => {
-    // State
+    // App State
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
     const [error, setError] = useState<string | null>(null);
@@ -179,7 +179,6 @@ const App = () => {
         setError(null);
 
         try {
-            // Prepare data first
             const parts: any[] = [];
             
             if (modelFile) {
@@ -258,8 +257,7 @@ const App = () => {
             }
 
             if (!foundImage && response.text) {
-                    console.log("Response text:", response.text);
-                    if (!foundImage) throw new Error("AI không trả về ảnh (Text response)."); 
+                 if (!foundImage) throw new Error("AI không trả về ảnh (Text response)."); 
             }
 
         } catch (err: any) {
@@ -339,7 +337,7 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                { text: "Enhance the person's figure by slightly lifting and adding fullness to the chest area for a more aesthetic and attractive look, ensuring it looks natural. Keep the face, skin texture, outfit details, and background exactly unchanged." }
+                { text: "Edit this image to significantly increase the size and fullness of the person's breasts. Make the chest area visibly larger, curvier, and more lifted. Ensure the clothes stretch naturally to fit the new shape. Keep the face, skin, and background exactly the same. Photorealistic result." }
             ];
 
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -382,6 +380,8 @@ const App = () => {
             <header className="main-header">
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
+                <div style={{marginBottom: '20px'}}>
+                </div>
                 
                 <nav className="main-nav">
                     <button 
@@ -862,6 +862,19 @@ const App = () => {
                                         <img src={breastLiftResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Lifted" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
                                             <a href={breastLiftResultImage} download="body_enhanced.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                            <button 
+                                                className="btn btn-secondary" 
+                                                onClick={() => {
+                                                    if (breastLiftResultImage) {
+                                                        const newImage = breastLiftResultImage;
+                                                        setBreastLiftInputImage(newImage);
+                                                        setBreastLiftResultImage(null);
+                                                        processBreastLift(newImage);
+                                                    }
+                                                }}
+                                            >
+                                                🔄 Nâng tiếp
+                                            </button>
                                         </div>
                                     </div>
                                 ) : (
