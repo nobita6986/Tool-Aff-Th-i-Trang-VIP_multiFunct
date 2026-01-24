@@ -2,6 +2,86 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
+// --- UTILS ---
+
+// Helper: Remove solid background via Flood Fill from corners
+// This assumes the background is nearly white and contiguous from the corners.
+const removeBackground = async (imageSrc: string): Promise<string> => {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(imageSrc); return; }
+
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            const w = canvas.width;
+            const h = canvas.height;
+
+            // We'll use a flood fill from 4 corners
+            const stack: [number, number][] = [];
+            const visited = new Uint8Array(w * h); // 0 = unvisited, 1 = visited
+
+            // Threshold for "White" (or background color)
+            // AI generated white might have slight noise, so we use a threshold.
+            // 240/255 is safe for "Pure White" prompts.
+            const threshold = 230; 
+
+            // Helper to check if pixel is "background-like" (very bright/white)
+            const isBackground = (idx: number) => {
+                const r = data[idx];
+                const g = data[idx+1];
+                const b = data[idx+2];
+                return r > threshold && g > threshold && b > threshold;
+            };
+
+            // Add corners to stack if they look like background
+            const corners = [[0,0], [w-1, 0], [0, h-1], [w-1, h-1]];
+            for(const [cx, cy] of corners) {
+                const idx = (cy * w + cx) * 4;
+                if(isBackground(idx)) {
+                    stack.push([cx, cy]);
+                    visited[cy * w + cx] = 1;
+                }
+            }
+
+            // Flood Fill (DFS)
+            while(stack.length > 0) {
+                const [x, y] = stack.pop()!;
+                const idx = (y * w + x) * 4;
+                
+                // Make pixel transparent
+                data[idx + 3] = 0; 
+
+                // Check Neighbors (4-way)
+                const neighbors = [[x+1, y], [x-1, y], [x, y+1], [x, y-1]];
+                for(const [nx, ny] of neighbors) {
+                    if(nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                        const nPos = ny * w + nx;
+                        if(visited[nPos] === 0) {
+                            const nIdx = nPos * 4;
+                            if(isBackground(nIdx)) {
+                                visited[nPos] = 1;
+                                stack.push([nx, ny]);
+                            }
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => resolve(imageSrc); // Fallback to original on error
+        img.src = imageSrc;
+    });
+};
+
 // Component definitions
 const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: { 
     label?: string; 
@@ -229,6 +309,14 @@ const App = () => {
         throw new Error(`Tất cả Key của ${activeProvider.toUpperCase()} đều lỗi. Lỗi cuối: ${lastError.message}`);
     };
 
+    // --- UTILS FOR APP ---
+    const getDownloadFileName = (prefix: string) => {
+        const now = new Date();
+        const pad = (n: number) => n.toString().padStart(2, '0');
+        const timeStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        return `${prefix}_${timeStr}.png`;
+    };
+
     // --- HANDLERS ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
         if (e.target.files && e.target.files[0]) {
@@ -430,7 +518,7 @@ const App = () => {
             
             // BACKGROUND LOGIC
             if (generationSettings.transparentBackground) {
-                textPrompt += "- BACKGROUND: **ISOLATED SUBJECT**. Generate the subject on a clean, PURE WHITE background (Hex #FFFFFF) with no shadows or environmental details, strictly isolated for easy background removal.\n";
+                textPrompt += "- BACKGROUND: **SOLID WHITE (Hex #FFFFFF)**. CRITICAL: Do NOT render any shadows, cast shadows, or floor reflections. The background must be completely flat white to allow for alpha removal via post-processing.\n";
             } else if (generationSettings.changeBackground) {
                 textPrompt += "- BACKGROUND: **CHANGE THE BACKGROUND**. Do NOT use the background from IMAGE A. Place the subject in a clean, professional studio environment (e.g., solid color, soft gradient, or lifestyle setting).\n";
             } else {
@@ -458,21 +546,27 @@ const App = () => {
                     contents: { parts: parts },
                 });
 
-                let foundImage = false;
+                let finalUrl: string | null = null;
                 if (response.candidates?.[0]?.content?.parts) {
                     for (const part of response.candidates[0].content.parts) {
                         if (part.inlineData) {
-                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            setFinalImage(imageUrl);
-                            foundImage = true;
+                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            break;
                         }
                     }
                 }
 
-                if (!foundImage) {
+                if (!finalUrl) {
                         const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
                         throw new Error("AI không trả về ảnh" + extraText); 
                 }
+                
+                // Post-process transparency
+                if (generationSettings.transparentBackground) {
+                    finalUrl = await removeBackground(finalUrl);
+                }
+
+                setFinalImage(finalUrl);
                 return response;
             });
 
@@ -1160,7 +1254,7 @@ const App = () => {
                                             <div style={{ width: '100%', textAlign: 'center' }}>
                                                 <img src={finalImage} alt="Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} />
                                                 <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                                                    <a href={finalImage} download="result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                                    <a href={finalImage} download={getDownloadFileName('try-on')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
                                                     <button className="btn btn-secondary" onClick={() => setFinalImage(null)}>🔄 Làm lại</button>
                                                     <button 
                                                         className="btn" 
@@ -1222,7 +1316,7 @@ const App = () => {
                                     <div>
                                         <img src={skinFixResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Fixed" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={skinFixResultImage} download="fixed_skin.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                            <a href={skinFixResultImage} download={getDownloadFileName('fix-skin')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
                                              <button 
                                                 className="btn" 
                                                 style={{ background: 'linear-gradient(to right, #c084fc, #e879f9)', color: 'black', border: 'none', fontWeight: 600 }}
@@ -1285,7 +1379,7 @@ const App = () => {
                                     <div>
                                         <img src={breastLiftResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Lifted" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={breastLiftResultImage} download="body_enhanced.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                            <a href={breastLiftResultImage} download={getDownloadFileName('breast-lift')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
                                             <button 
                                                 className="btn btn-secondary" 
                                                 onClick={() => {
