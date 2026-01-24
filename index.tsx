@@ -525,19 +525,18 @@ const App = () => {
                         data: base64Data
                     }
                 },
-                // Updated Prompt for "Stronger Surgery" (DRAMATIC Change)
-                { text: "ACT AS: High-End Glamour Retoucher.\n" +
-                  "TASK: DRAMATIC Breast Augmentation & Body Sculpting.\n" +
-                  "GOAL: Create a significant, visually obvious transformation. The subject should look voluptuous with a distinct hourglass figure.\n\n" +
-                  "INSTRUCTIONS:\n" +
-                  "1. **MAXIMUM VOLUME:** Significantly increase breast size (3-4 cup sizes larger). They must appear very full, heavy, and lifted.\n" +
-                  "2. **DRAMATIC SILHOUETTE:** Alter the body outline to show a massive difference in curvature. Create deep, defined cleavage.\n" +
-                  "3. **CLOTHING PHYSICS:** Redraw clothing tension. Fabric must stretch tightly over the larger curves. Buttons or seams should look strained if applicable.\n" +
-                  "4. **WAIST CONTRAST:** Slightly slim the waist to exaggerate the bust-to-waist ratio for a 'Bombshell' look.\n\n" +
-                  "STRICT CONSTRAINTS:\n" +
-                  "- **IDENTITY PRESERVATION:** Face, features, and hair must remain 100% UNCHANGED.\n" +
-                  "- **BACKGROUND PRESERVATION:** No warping of the background.\n" +
-                  "- **REALISM:** Must look like a real photo, not a cartoon."
+                // Updated Prompt for "Significant/Forceful" Change
+                { text: "TASK: Digital Body Morphing - Significant Breast Augmentation.\n" +
+                  "OBJECTIVE: Transform the subject's upper body to have a visibly larger, voluptuous bust size (Increase volume by +3 cup sizes).\n\n" +
+                  "VISUAL REQUIREMENTS:\n" +
+                  "1. **GEOMETRY EXPANSION:** The chest silhouette MUST expand outwards. Do not just shade inside the existing lines; change the outline of the body to be much curvier.\n" +
+                  "2. **CLOTHING TENSION:** Redraw the clothing to look tight and stretched across the chest. The fabric should conform closely to the new large spherical volume.\n" +
+                  "3. **CLEAVAGE & DEPTH:** Create deep, high-contrast shadows between the breasts to demonstrate separation and mass.\n" +
+                  "4. **WAIST RATIO:** Ensure the waist looks slim in comparison to the new chest width, creating an extreme hourglass ratio.\n\n" +
+                  "STRICT PRESERVATION:\n" +
+                  "- **FACE LOCK:** The face, hair, and head shape must remain IDENTICAL to the original.\n" +
+                  "- **BACKGROUND:** Do not distort the background.\n" +
+                  "- **REALISM:** High-quality photorealism only."
                 }
             ];
 
