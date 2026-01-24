@@ -93,8 +93,15 @@ body {
     box-shadow: 0 0 15px rgba(236, 72, 153, 0.4);
 }
 
-/* --- Settings Button (New Modern Style) --- */
-.settings-btn {
+/* --- Settings & Guide Button --- */
+.header-actions {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.settings-btn, .guide-btn {
     background: rgba(30, 30, 30, 0.6);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -116,7 +123,7 @@ body {
     overflow: hidden;
 }
 
-.settings-btn::before {
+.settings-btn::before, .guide-btn::before {
     content: '';
     position: absolute;
     top: 0;
@@ -136,11 +143,19 @@ body {
     background: rgba(40, 40, 40, 0.8);
 }
 
-.settings-btn:hover::before {
+.guide-btn:hover {
+    border-color: #10b981;
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    background: rgba(40, 40, 40, 0.8);
+}
+
+.settings-btn:hover::before, .guide-btn:hover::before {
     transform: translateX(100%);
 }
 
-.settings-btn:active {
+.settings-btn:active, .guide-btn:active {
     transform: translateY(0);
 }
 
@@ -152,6 +167,12 @@ body {
     justify-content: center;
     gap: 1rem;
     margin-bottom: 2rem;
+}
+
+/* Specific fix for tooltip containers in flex layouts to prevent full width stretching */
+.mode-switcher-container .tooltip-container,
+.aspect-ratio-selector .tooltip-container {
+    width: auto;
 }
 
 /* Buttons */
@@ -815,6 +836,88 @@ body {
     color: #555;
     font-size: 0.9rem;
     font-style: italic;
+}
+
+/* --- TOOLTIP STYLES --- */
+.tooltip-container {
+    position: relative;
+    display: inline-block;
+    width: 100%; /* Ensure wrappers take full space where needed */
+}
+
+.tooltip-bubble {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    z-index: 1000;
+    pointer-events: none;
+    margin-bottom: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    border: 1px solid #444;
+    opacity: 0;
+    animation: fadeInTooltip 0.2s forwards;
+    text-align: center;
+    line-height: 1.4;
+}
+
+/* Small arrow for tooltip */
+.tooltip-bubble::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #444 transparent transparent transparent;
+}
+
+@keyframes fadeInTooltip {
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* --- GUIDE MODAL CONTENT --- */
+.guide-section {
+    margin-bottom: 24px;
+}
+.guide-section h4 {
+    color: #60a5fa;
+    margin-bottom: 12px;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+}
+.guide-content ul {
+    padding-left: 20px;
+    color: #d1d5db;
+    line-height: 1.6;
+}
+.guide-content li {
+    margin-bottom: 8px;
+}
+.guide-features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.feature-box {
+    background: #252525;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #333;
+}
+.feature-box strong {
+    display: block;
+    color: #10b981;
+    margin-bottom: 5px;
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }

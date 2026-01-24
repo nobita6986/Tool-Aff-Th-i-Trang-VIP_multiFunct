@@ -4,6 +4,27 @@ import { GoogleGenAI } from "@google/genai";
 
 // --- UTILS ---
 
+// Tooltip Component
+const Tooltip = ({ text, children, style }: { text: string; children?: React.ReactNode; style?: React.CSSProperties }) => {
+    const [isVisible, setIsVisible] = useState(false);
+
+    return (
+        <div 
+            className="tooltip-container" 
+            onMouseEnter={() => setIsVisible(true)}
+            onMouseLeave={() => setIsVisible(false)}
+            style={style}
+        >
+            {children}
+            {isVisible && (
+                <div className="tooltip-bubble">
+                    {text}
+                </div>
+            )}
+        </div>
+    );
+};
+
 // Helper: Remove solid background via Flood Fill from corners
 // This assumes the background is nearly white and contiguous from the corners.
 const removeBackground = async (imageSrc: string): Promise<string> => {
@@ -136,6 +157,7 @@ const App = () => {
     const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
     const [tempKeyInput, setTempKeyInput] = useState('');
     const [showSettings, setShowSettings] = useState(false);
+    const [showGuide, setShowGuide] = useState(false);
     const [modalSelectedProvider, setModalSelectedProvider] = useState<Provider>('gemini');
     
     // Rotation Logic refs
@@ -736,7 +758,7 @@ const App = () => {
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
                 
-                <div style={{marginBottom: '20px'}}>
+                <div className="header-actions">
                     <button 
                         className="settings-btn"
                         onClick={() => setShowSettings(true)}
@@ -744,12 +766,19 @@ const App = () => {
                         <span style={{fontSize: '1.2rem'}}>⚙️</span>
                         <span>Cài đặt API</span>
                     </button>
-                    {activeProvider !== 'gemini' && (
-                        <div style={{marginTop: '10px', color: '#f59e0b', fontSize: '0.9rem'}}>
-                            ⚠️ Đang dùng: {activeProvider.toUpperCase()} (Chưa hỗ trợ tạo ảnh)
-                        </div>
-                    )}
+                    <button 
+                        className="guide-btn"
+                        onClick={() => setShowGuide(true)}
+                    >
+                        <span style={{fontSize: '1.2rem'}}>📖</span>
+                        <span>Hướng dẫn</span>
+                    </button>
                 </div>
+                {activeProvider !== 'gemini' && (
+                    <div style={{marginTop: '0px', color: '#f59e0b', fontSize: '0.9rem'}}>
+                        ⚠️ Đang dùng: {activeProvider.toUpperCase()} (Chưa hỗ trợ tạo ảnh)
+                    </div>
+                )}
 
                 <nav className="main-nav">
                     <button 
@@ -772,6 +801,59 @@ const App = () => {
                     </button>
                 </nav>
             </header>
+
+            {/* --- GUIDE MODAL --- */}
+            {showGuide && (
+                <div className="modal-overlay">
+                    <div className="modal-content settings-modal-wide">
+                        <div className="modal-header">
+                            <h3>Hướng dẫn sử dụng & Giới thiệu</h3>
+                            <button className="modal-close" onClick={() => setShowGuide(false)}>×</button>
+                        </div>
+                        <div className="modal-main guide-content">
+                            <div className="guide-features">
+                                <div className="feature-box">
+                                    <strong>Công nghệ Đột phá</strong>
+                                    Sử dụng AI Generative mới nhất để hiểu sâu về cấu trúc trang phục và cơ thể người.
+                                </div>
+                                <div className="feature-box">
+                                    <strong>Bảo toàn Danh tính</strong>
+                                    Thuật toán "Identity Preservation" giúp giữ nguyên khuôn mặt và vóc dáng mẫu gốc.
+                                </div>
+                                <div className="feature-box">
+                                    <strong>Xử lý Đa chiều</strong>
+                                    Hỗ trợ thay đổi tư thế (Pose), bối cảnh, và tự động xóa phông nền (Alpha channel).
+                                </div>
+                            </div>
+
+                            <div className="guide-section">
+                                <h4>1. Virtual Try-On (Thử đồ ảo)</h4>
+                                <ul>
+                                    <li><strong>Full Set:</strong> Dành cho khi bạn có ảnh chụp sẵn một bộ đồ hoàn chỉnh (trải sàn hoặc ma-nơ-canh) và muốn ướm lên mẫu.</li>
+                                    <li><strong>Mix & Match:</strong> Dành cho khi bạn muốn phối các món đồ lẻ (áo, quần, giày...) lại với nhau.</li>
+                                    <li><strong>Lưu ý:</strong> Ảnh mẫu nên rõ mặt và chụp chính diện để có kết quả tốt nhất.</li>
+                                </ul>
+                            </div>
+
+                            <div className="guide-section">
+                                <h4>2. Fix Da Nhựa (Skin Enhancer)</h4>
+                                <ul>
+                                    <li>Công cụ chuyên dụng để xử lý các ảnh AI bị lỗi da "bóng loáng" hoặc "giả trân".</li>
+                                    <li>AI sẽ tái tạo lại lỗ chân lông, thêm hạt (grain) và điều chỉnh ánh sáng để da trông như chụp bằng máy ảnh thật.</li>
+                                </ul>
+                            </div>
+
+                             <div className="guide-section">
+                                <h4>3. AI Nâng Ngực (Body Enhancer)</h4>
+                                <ul>
+                                    <li>Tự động nhận diện vùng ngực và điều chỉnh kích thước tự nhiên.</li>
+                                    <li>AI tự động tính toán độ căng của vải và bóng đổ để đảm bảo tính vật lý chân thực.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* --- SETTINGS MODAL --- */}
             {showSettings && (
@@ -886,18 +968,22 @@ const App = () => {
              {activeTab === 'try-on' && (
                 <>
                     <div className="mode-switcher-container">
-                        <button 
-                            className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => { setTryOnMode('full'); setError(null); }}
-                        >
-                            ✨ Full Set (Nguyên Bộ)
-                        </button>
-                        <button 
-                            className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`}
-                            onClick={() => { setTryOnMode('mix'); setError(null); }}
-                        >
-                            🧩 Mix & Match (Lẻ)
-                        </button>
+                        <Tooltip text="Chế độ thay toàn bộ trang phục từ một ảnh duy nhất.">
+                            <button 
+                                className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => { setTryOnMode('full'); setError(null); }}
+                            >
+                                ✨ Full Set (Nguyên Bộ)
+                            </button>
+                        </Tooltip>
+                        <Tooltip text="Chế độ phối hợp nhiều món đồ lẻ (áo, quần, giày...) lên người mẫu.">
+                            <button 
+                                className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`}
+                                onClick={() => { setTryOnMode('mix'); setError(null); }}
+                            >
+                                🧩 Mix & Match (Lẻ)
+                            </button>
+                        </Tooltip>
                     </div>
 
                     <main className="workflow-container">
@@ -909,14 +995,16 @@ const App = () => {
                                         <div className="full-mode-container">
                                             <div className="dual-upload-container">
                                                 <div className="upload-box">
-                                                    <ImageUploader
-                                                        label="1. Ảnh Set Đồ (Chính)"
-                                                        image={fullOutfitPreview}
-                                                        onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
-                                                        onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
-                                                    >
-                                                        <p>Tải ảnh chứa nguyên set đồ</p>
-                                                    </ImageUploader>
+                                                    <Tooltip text="Ảnh chứa bộ đồ bạn muốn mặc thử. Có thể là ảnh trải sàn hoặc ma-nơ-canh.">
+                                                        <ImageUploader
+                                                            label="1. Ảnh Set Đồ (Chính)"
+                                                            image={fullOutfitPreview}
+                                                            onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
+                                                            onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
+                                                        >
+                                                            <p>Tải ảnh chứa nguyên set đồ</p>
+                                                        </ImageUploader>
+                                                    </Tooltip>
 
                                                     <div className="reference-section">
                                                         <div className="reference-header">
@@ -955,14 +1043,16 @@ const App = () => {
                                                 </div>
 
                                                 <div className="upload-box">
-                                                    <ImageUploader
-                                                        label="2. Ảnh Người Mẫu"
-                                                        image={modelPreview}
-                                                        onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                                                        onRemove={() => { setModelFile(null); setModelPreview(null); }}
-                                                    >
-                                                        <p>Tải ảnh người mẫu</p>
-                                                    </ImageUploader>
+                                                    <Tooltip text="Ảnh người mẫu sẽ mặc thử đồ. Khuôn mặt và vóc dáng sẽ được giữ nguyên.">
+                                                        <ImageUploader
+                                                            label="2. Ảnh Người Mẫu"
+                                                            image={modelPreview}
+                                                            onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
+                                                            onRemove={() => { setModelFile(null); setModelPreview(null); }}
+                                                        >
+                                                            <p>Tải ảnh người mẫu</p>
+                                                        </ImageUploader>
+                                                    </Tooltip>
                                                 </div>
                                             </div>
                                             
@@ -1013,54 +1103,66 @@ const App = () => {
                                                         <div className="settings-card-body">
                                                             <div className="option-toggles-list">
                                                                 <div className="aspect-ratio-selector">
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                                        onClick={() => setAspectRatio('9:16')}
-                                                                    >
-                                                                        📱 Dọc (9:16)
-                                                                    </button>
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                                        onClick={() => setAspectRatio('16:9')}
-                                                                    >
-                                                                        💻 Ngang (16:9)
-                                                                    </button>
+                                                                    <Tooltip text="Phù hợp cho Story/Reels/Tiktok.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                                            onClick={() => setAspectRatio('9:16')}
+                                                                        >
+                                                                            📱 Dọc (9:16)
+                                                                        </button>
+                                                                    </Tooltip>
+                                                                    <Tooltip text="Phù hợp cho bài đăng Facebook/Web.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                                            onClick={() => setAspectRatio('16:9')}
+                                                                        >
+                                                                            💻 Ngang (16:9)
+                                                                        </button>
+                                                                    </Tooltip>
                                                                 </div>
 
                                                                 <div className="settings-grid-2col">
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                                        onClick={() => toggleGenerationSetting('changePose')}
-                                                                    >
-                                                                        <span>💃 Đổi tư thế</span>
-                                                                        {generationSettings.changePose && <span>✓</span>}
-                                                                    </button>
+                                                                    <Tooltip text="AI sẽ tự sáng tạo tư thế mới dựa trên trang phục. Tắt để giữ nguyên dáng đứng cũ.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                                            onClick={() => toggleGenerationSetting('changePose')}
+                                                                        >
+                                                                            <span>💃 Đổi tư thế</span>
+                                                                            {generationSettings.changePose && <span>✓</span>}
+                                                                        </button>
+                                                                    </Tooltip>
                                                                     
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                                        onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                                    >
-                                                                        <span>🧍 Toàn thân</span>
-                                                                        {generationSettings.generateFullBody && <span>✓</span>}
-                                                                    </button>
+                                                                    <Tooltip text="Nếu ảnh gốc bị cắt chân, AI sẽ tự vẽ thêm để thành ảnh toàn thân.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
+                                                                            onClick={() => toggleGenerationSetting('generateFullBody')}
+                                                                        >
+                                                                            <span>🧍 Toàn thân</span>
+                                                                            {generationSettings.generateFullBody && <span>✓</span>}
+                                                                        </button>
+                                                                    </Tooltip>
 
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                                        onClick={() => toggleGenerationSetting('changeBackground')}
-                                                                        disabled={generationSettings.transparentBackground}
-                                                                        style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}
-                                                                    >
-                                                                        <span>🏞️ Đổi nền</span>
-                                                                        {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
-                                                                    </button>
+                                                                    <Tooltip text="Thay thế nền cũ bằng studio chuyên nghiệp hoặc bối cảnh phù hợp.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                                            onClick={() => toggleGenerationSetting('changeBackground')}
+                                                                            disabled={generationSettings.transparentBackground}
+                                                                            style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}
+                                                                        >
+                                                                            <span>🏞️ Đổi nền</span>
+                                                                            {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
+                                                                        </button>
+                                                                    </Tooltip>
 
-                                                                    <button 
-                                                                        className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
-                                                                        onClick={() => toggleGenerationSetting('transparentBackground')}
-                                                                    >
-                                                                        <span>🔳 Nền rỗng</span>
-                                                                        {generationSettings.transparentBackground && <span>✓</span>}
-                                                                    </button>
+                                                                    <Tooltip text="Tách nền, tạo ra ảnh PNG trong suốt. Rất tiện để ghép vào thiết kế khác.">
+                                                                        <button 
+                                                                            className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
+                                                                            onClick={() => toggleGenerationSetting('transparentBackground')}
+                                                                        >
+                                                                            <span>🔳 Nền rỗng</span>
+                                                                            {generationSettings.transparentBackground && <span>✓</span>}
+                                                                        </button>
+                                                                    </Tooltip>
                                                                 </div>
                                                             </div>
                                                         </div>
