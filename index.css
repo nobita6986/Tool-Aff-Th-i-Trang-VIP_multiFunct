@@ -102,6 +102,15 @@ body {
     box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
 }
 
+/* AI Influencer - Gold/Orange */
+.nav-item.nav-influencer:hover,
+.nav-item.nav-influencer.active {
+    background: #f59e0b; /* Amber */
+    color: white;
+    border-color: #f59e0b;
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
 /* --- Settings & Guide Button --- */
 .header-actions {
     display: flex;
@@ -561,6 +570,56 @@ body {
     justify-content: center;
 }
 
+/* Influencer Form Controls */
+.influencer-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.form-item {
+    flex: 1;
+    min-width: 200px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.form-select, .form-input, .form-textarea {
+    width: 100%;
+    background: #121212;
+    border: 1px solid #333;
+    color: #fff;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    box-sizing: border-box;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.form-select:focus, .form-input:focus, .form-textarea:focus {
+    border-color: #f59e0b;
+    outline: none;
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+
 /* Finalize Section */
 .finalize-box {
     background: #252525;
@@ -973,5 +1032,9 @@ body {
     }
     .mode-switcher-container {
         flex-direction: column;
+    }
+    .form-row {
+        flex-direction: column;
+        gap: 15px;
     }
 }

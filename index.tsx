@@ -193,6 +193,20 @@ const App = () => {
     const [breastLiftResultImage, setBreastLiftResultImage] = useState<string | null>(null);
     const [isLiftingBreast, setIsLiftingBreast] = useState(false);
 
+    // AI Influencer Mode State
+    const [influencerSettings, setInfluencerSettings] = useState({
+        gender: 'female',
+        age: '20s (Young Adult)',
+        ethnicity: 'Asian (Vietnamese)',
+        hair: 'Long Black Silky',
+        eyes: 'Brown',
+        bodyType: 'Slim & Fit',
+        style: 'Modern Luxury',
+        scenario: 'Drinking coffee in a cozy cafe, morning sunlight'
+    });
+    const [influencerResultImage, setInfluencerResultImage] = useState<string | null>(null);
+    const [isCreatingInfluencer, setIsCreatingInfluencer] = useState(false);
+
     // Full Mode State
     const [fullOutfitFile, setFullOutfitFile] = useState<File | null>(null);
     const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
@@ -458,6 +472,13 @@ const App = () => {
         }
     };
 
+    const handleInfluencerSettingChange = (field: string, value: string) => {
+        setInfluencerSettings(prev => ({
+            ...prev,
+            [field]: value
+        }));
+    };
+
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -475,6 +496,87 @@ const App = () => {
 
     // --- GENERATION FUNCTIONS ---
 
+    const handleCreateInfluencer = async () => {
+        setIsCreatingInfluencer(true);
+        setInfluencerResultImage(null);
+        setError(null);
+
+        try {
+            const { gender, age, ethnicity, hair, eyes, bodyType, style, scenario } = influencerSettings;
+            const parts: any[] = [];
+
+            let textPrompt = "TASK: Create a High-End Virtual Influencer (AI KOL) - Photorealistic Portrait.\n\n";
+            
+            textPrompt += "1. **CHARACTER SPECIFICATIONS**:\n";
+            textPrompt += `   - **Gender**: ${gender}.\n`;
+            textPrompt += `   - **Age**: ${age}.\n`;
+            textPrompt += `   - **Ethnicity/Origin**: ${ethnicity}.\n`;
+            textPrompt += `   - **Hair**: ${hair}.\n`;
+            textPrompt += `   - **Eyes**: ${eyes}.\n`;
+            textPrompt += `   - **Body Type**: ${bodyType}.\n`;
+            textPrompt += `   - **Features**: Flawless skin texture, perfect symmetry, high-fashion makeup (if female), confident expression.\n\n`;
+
+            textPrompt += "2. **STYLE & SCENARIO**:\n";
+            textPrompt += `   - **Fashion Style**: ${style}.\n`;
+            textPrompt += `   - **Setting/Activity**: ${scenario}.\n\n`;
+
+            textPrompt += "3. **PHOTOGRAPHY QUALITY**:\n";
+            textPrompt += "   - Style: Professional Editorial/Lifestyle Photography.\n";
+            textPrompt += "   - Lighting: Soft, cinematic natural lighting or studio lighting as appropriate for scene.\n";
+            textPrompt += "   - Details: 8k resolution, ultra-detailed skin pores, realistic hair physics, depth of field.\n";
+            
+            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
+            
+            // Strict No-Text Instruction
+            textPrompt += "\n\n**CRITICAL OUTPUT RULE**: Return ONLY the generated image. Do NOT output any text.";
+
+            parts.push({ text: textPrompt });
+
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const modelName = 'gemini-2.5-flash-image';
+                
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: parts },
+                    config: {
+                        // Use string literals for safety settings to ensure compatibility and loose typing if needed
+                        safetySettings: [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+                        ]
+                    }
+                });
+
+                let finalUrl: string | null = null;
+                if (response.candidates?.[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.inlineData) {
+                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            break;
+                        }
+                    }
+                }
+
+                if (!finalUrl) {
+                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
+                        throw new Error("AI không trả về ảnh" + extraText); 
+                }
+
+                setInfluencerResultImage(finalUrl);
+                return response;
+            });
+
+        } catch (err: any) {
+            console.error(err);
+            setError("Lỗi tạo Influencer: " + err.message);
+        } finally {
+            setIsCreatingInfluencer(false);
+        }
+    };
+
     const handleSwapFace = async () => {
         if (!swapTargetFile || !swapSourceFile) return;
         setIsSwapping(true);
@@ -487,38 +589,50 @@ const App = () => {
             const sourceB64 = await fileToBase64(swapSourceFile);
 
             // STRATEGY CHANGE: Provide Source Identity FIRST to anchor the model on the face features.
-            parts.push({ text: "INPUT 1 [SOURCE IDENTITY]: This is the face/identity to generate. Focus on the facial structure, eyes, nose, and mouth." });
+            parts.push({ text: "SOURCE IMAGE [IDENTITY]: Contains the face to swap. Focus on internal facial features (eyes, nose, mouth) and unique characteristics (moles, scars)." });
             parts.push({
                 inlineData: { mimeType: swapSourceFile.type, data: sourceB64 }
             });
 
-            parts.push({ text: "INPUT 2 [TARGET CONTEXT]: This is the body and background. The face in this image must be REPLACED." });
+            parts.push({ text: "TARGET IMAGE [BODY/POSE]: Contains the body, pose, and background. The face here must be replaced." });
             parts.push({
                 inlineData: { mimeType: swapTargetFile.type, data: targetB64 }
             });
 
-            let textPrompt = "TASK: High-Fidelity Face Swap with Seamless Skin Tone Adaptation.\n";
-            textPrompt += "ACTION: Replace the face in INPUT 2 (Target Context) with the identity of INPUT 1 (Source Identity).\n\n";
-            textPrompt += "⚠️ CRITICAL RULES:\n";
-            textPrompt += "1. **IDENTITY**: The facial features (eyes, nose, mouth structure) MUST be 100% from INPUT 1.\n";
-            textPrompt += "2. **SKIN TONE UNIFICATION (HIGHEST PRIORITY)**: \n";
-            textPrompt += "   - The skin tone of the new face MUST be color-graded to match the neck, chest, and arms of the body in INPUT 2.\n";
-            textPrompt += "   - If the body in INPUT 2 is pale, the face MUST be pale. If tanned, the face MUST be tanned.\n";
-            textPrompt += "   - Match the lighting temperature, shadows, and grain of INPUT 2 exactly. No visible neck seam.\n";
-            textPrompt += "3. **CONTEXT**: Keep the body, clothes, pose, and background of INPUT 2 exactly as is.\n";
+            // UPDATED PROMPT: More technical, less chatty to avoid AI text refusal.
+            let textPrompt = "TASK: Advanced Image Compositing & Identity Transfer.\n";
+            textPrompt += "OBJECTIVE: Generate a photorealistic image by seamlessly compositing the facial features from the SOURCE IMAGE onto the body of the TARGET IMAGE.\n\n";
+
+            textPrompt += "1. IDENTITY PRESERVATION (CRITICAL):\n";
+            textPrompt += "   - Maintain facial features: eyes, nose, mouth shape from SOURCE.\n";
+            textPrompt += "   - Preserve unique characteristics: moles, scars, wrinkles from SOURCE.\n";
+            textPrompt += "   - Keep facial structure and proportions accurate to SOURCE.\n";
+
+            textPrompt += "2. POSE & EXPRESSION MATCHING:\n";
+            textPrompt += "   - Match head pose angle from TARGET (yaw, pitch, roll).\n";
+            textPrompt += "   - Align face orientation exactly to the TARGET's neck and head shape.\n";
 
              // EXPRESSION LOGIC
             if (generationSettings.expression && generationSettings.expression !== 'default') {
                 const expr = generationSettings.expression;
-                textPrompt += `- **EXPRESSION**: The subject must have a '${expr.toUpperCase()}' expression.\n`;
+                textPrompt += `   - **EXPRESSION**: Change the facial expression to '${expr.toUpperCase()}'.\n`;
+            } else {
+                textPrompt += "   - Adapt facial expression to match the TARGET's original expression/vibe.\n";
             }
 
-             // POSE LOGIC
+            textPrompt += "3. SEAMLESS BLENDING (High Priority):\n";
+            textPrompt += "   - **Color Grading**: Match skin tone of the new face EXACTLY to the TARGET's neck and body.\n";
+            textPrompt += "   - **Lighting**: Preserve TARGET's lighting direction, temperature, and shadows.\n";
+            textPrompt += "   - **Texture**: Ensure natural skin texture and grain consistency.\n";
+            textPrompt += "   - Blend face boundary smoothly without visible seams.\n";
+
+            textPrompt += "4. CONTEXT PRESERVATION:\n";
+            textPrompt += "   - Keep the TARGET's background, clothing, and hair UNCHANGED (unless hair obscures the face, then adapt naturally).\n";
+
+             // POSE LOGIC OVERRIDE
             if (generationSettings.changePose) {
-                textPrompt += "- **POSE**: IGNORE the specific pose of INPUT 2. Generate a NEW, dynamic fashion pose for the subject (INPUT 1 Identity in INPUT 2 Clothes).\n";
-            } else {
-                textPrompt += "- **POSE**: STRICTLY PRESERVE the original pose, head angle, and body language of INPUT 2.\n";
-            }
+                textPrompt += "- **POSE OVERRIDE**: IGNORE the specific pose of TARGET. Generate a NEW, dynamic fashion pose for the subject (SOURCE Identity in TARGET Clothes).\n";
+            } 
             
             // BACKGROUND LOGIC
             if (generationSettings.transparentBackground) {
@@ -526,11 +640,14 @@ const App = () => {
             } else if (generationSettings.changeBackground) {
                 textPrompt += "- **BACKGROUND**: Place the subject in a new high-end studio or luxury environment.\n";
             } else {
-                textPrompt += "- **BACKGROUND**: Keep the original background of INPUT 2 exactly as is.\n";
+                textPrompt += "- **BACKGROUND**: Keep the original background of TARGET exactly as is.\n";
             }
 
             textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
             textPrompt += "\nStyle: 8k resolution, Photorealistic, High Fidelity.";
+            
+            // Strict No-Text Instruction
+            textPrompt += "\n\n**CRITICAL OUTPUT RULE**: Return ONLY the generated image. Do NOT output any text, explanation, or chat. Just the image.";
 
             parts.push({ text: textPrompt });
 
@@ -541,6 +658,15 @@ const App = () => {
                 const response = await ai.models.generateContent({
                     model: modelName,
                     contents: { parts: parts },
+                    config: {
+                        // Use string literals for safety settings to ensure compatibility and loose typing if needed
+                        safetySettings: [
+                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+                        ]
+                    }
                 });
 
                 let finalUrl: string | null = null;
@@ -907,6 +1033,12 @@ const App = () => {
 
                 <nav className="main-nav">
                     <button 
+                        className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('ai-influencer')}
+                    >
+                        🌟 Create AI Influencer
+                    </button>
+                    <button 
                         className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`}
                         onClick={() => setActiveTab('try-on')}
                     >
@@ -988,6 +1120,14 @@ const App = () => {
                                 <ul>
                                     <li>Tự động nhận diện vùng ngực và điều chỉnh kích thước tự nhiên.</li>
                                     <li>AI tự động tính toán độ căng của vải và bóng đổ để đảm bảo tính vật lý chân thực.</li>
+                                </ul>
+                            </div>
+
+                            <div className="guide-section">
+                                <h4>5. Create AI Influencer (Tạo KOL ảo)</h4>
+                                <ul>
+                                    <li>Tạo nhân vật ảo (Virtual Influencer) chuyên nghiệp dựa trên các thông số tùy chỉnh.</li>
+                                    <li>Chọn giới tính, tuổi, sắc tộc, phong cách và bối cảnh để AI tạo ra hình ảnh chân thực nhất.</li>
                                 </ul>
                             </div>
                         </div>
@@ -1837,6 +1977,195 @@ const App = () => {
                             </div>
                         </div>
                     </section>
+                </div>
+            )}
+
+            {activeTab === 'ai-influencer' && (
+                <div className="workflow-container">
+                    <section className="step-card full-width">
+                        <h2><span className="step-number">1</span> Thiết Kế Nhân Vật (Character)</h2>
+                        
+                        <div className="influencer-form-group">
+                            <div className="form-row">
+                                <div className="form-item">
+                                    <label className="form-label">Giới tính</label>
+                                    <select 
+                                        className="form-select"
+                                        value={influencerSettings.gender}
+                                        onChange={(e) => handleInfluencerSettingChange('gender', e.target.value)}
+                                    >
+                                        <option value="Female">Nữ (Female)</option>
+                                        <option value="Male">Nam (Male)</option>
+                                    </select>
+                                </div>
+                                <div className="form-item">
+                                    <label className="form-label">Độ tuổi</label>
+                                    <select 
+                                        className="form-select"
+                                        value={influencerSettings.age}
+                                        onChange={(e) => handleInfluencerSettingChange('age', e.target.value)}
+                                    >
+                                        <option value="Teenager (18-19)">Teen (18-19)</option>
+                                        <option value="20s (Young Adult)">20s (Trẻ)</option>
+                                        <option value="30s (Mature)">30s (Trưởng thành)</option>
+                                        <option value="40s (Middle Age)">40s (Trung niên)</option>
+                                    </select>
+                                </div>
+                                <div className="form-item">
+                                    <label className="form-label">Sắc tộc / Xuất xứ</label>
+                                    <select 
+                                        className="form-select"
+                                        value={influencerSettings.ethnicity}
+                                        onChange={(e) => handleInfluencerSettingChange('ethnicity', e.target.value)}
+                                    >
+                                        <option value="Asian (Vietnamese)">Châu Á (Việt Nam)</option>
+                                        <option value="Asian (Korean)">Châu Á (Hàn Quốc)</option>
+                                        <option value="Asian (Japanese)">Châu Á (Nhật Bản)</option>
+                                        <option value="Caucasian (Western)">Phương Tây (Trắng)</option>
+                                        <option value="Latina">Latina</option>
+                                        <option value="Mixed Race">Lai (Mixed)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="form-row">
+                                <div className="form-item">
+                                    <label className="form-label">Kiểu tóc</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={influencerSettings.hair}
+                                        onChange={(e) => handleInfluencerSettingChange('hair', e.target.value)}
+                                        placeholder="Ví dụ: Long black straight hair..."
+                                    />
+                                </div>
+                                <div className="form-item">
+                                    <label className="form-label">Màu mắt</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={influencerSettings.eyes}
+                                        onChange={(e) => handleInfluencerSettingChange('eyes', e.target.value)}
+                                        placeholder="Ví dụ: Brown, Blue, Hazel..."
+                                    />
+                                </div>
+                                <div className="form-item">
+                                    <label className="form-label">Dáng người</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={influencerSettings.bodyType}
+                                        onChange={(e) => handleInfluencerSettingChange('bodyType', e.target.value)}
+                                        placeholder="Ví dụ: Slim, Curvy, Athletic..."
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="step-card full-width">
+                        <h2><span className="step-number">2</span> Phong Cách & Bối Cảnh</h2>
+                        <div className="influencer-form-group">
+                            <div className="form-item">
+                                <label className="form-label">Phong cách thời trang (Style)</label>
+                                <input 
+                                    type="text" 
+                                    className="form-input" 
+                                    value={influencerSettings.style}
+                                    onChange={(e) => handleInfluencerSettingChange('style', e.target.value)}
+                                    placeholder="Ví dụ: Luxury Streetwear, Business Casual, Bikini Beach..."
+                                />
+                            </div>
+                            <div className="form-item">
+                                <label className="form-label">Bối cảnh / Hoạt động (Scenario)</label>
+                                <textarea 
+                                    className="form-textarea" 
+                                    value={influencerSettings.scenario}
+                                    onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)}
+                                    placeholder="Mô tả chi tiết bối cảnh. Ví dụ: Sitting in a high-end coffee shop in Paris, morning sunlight through window, holding a latte..."
+                                />
+                            </div>
+                            
+                            <div className="form-item">
+                                <label className="form-label">Tỉ lệ khung hình</label>
+                                <div className="aspect-ratio-selector">
+                                    <button 
+                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                        onClick={() => setAspectRatio('9:16')}
+                                    >
+                                        📱 Dọc (9:16)
+                                    </button>
+                                    <button 
+                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                        onClick={() => setAspectRatio('16:9')}
+                                    >
+                                        💻 Ngang (16:9)
+                                    </button>
+                                     <button 
+                                        className={`option-btn ${generationSettings.aspectRatio === '1:1' ? 'active' : ''}`}
+                                        onClick={() => setAspectRatio('1:1')}
+                                    >
+                                        ⏹ Vuông (1:1)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="step-card full-width">
+                        <h2><span className="step-number">3</span> Tạo Influencer</h2>
+                         <button 
+                            className="btn btn-primary start-btn" 
+                            style={{background: 'linear-gradient(135deg, #f59e0b, #d97706)'}}
+                            onClick={handleCreateInfluencer} 
+                            disabled={isCreatingInfluencer}
+                        >
+                            🌟 {isCreatingInfluencer ? 'Đang tạo nhân vật...' : 'Tạo AI Influencer'}
+                        </button>
+                    </section>
+
+                    {(influencerResultImage || isCreatingInfluencer) && (
+                        <section className="step-card full-width">
+                            <h2><span className="step-number">✨</span> Kết Quả</h2>
+                            <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                                {isCreatingInfluencer ? (
+                                    <div style={{textAlign: 'center'}}>
+                                        <div className="spinner" style={{borderLeftColor: '#f59e0b'}}></div>
+                                        <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang vẽ nhân vật ảo...</p>
+                                    </div>
+                                ) : (
+                                    influencerResultImage && (
+                                        <div style={{ width: '100%', textAlign: 'center' }}>
+                                            <img src={influencerResultImage} alt="Influencer Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.2)' }} />
+                                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                <a href={influencerResultImage} download={getDownloadFileName('ai-influencer')} className="btn btn-primary" style={{textDecoration: 'none', background: '#f59e0b'}}>💾 Tải về</a>
+                                                <button className="btn btn-secondary" onClick={() => setInfluencerResultImage(null)}>🔄 Tạo lại</button>
+                                                <button 
+                                                    className="btn" 
+                                                    style={{ background: '#3b82f6', color: 'white' }}
+                                                    onClick={() => {
+                                                        // Auto switch to Try On and set this as model
+                                                        setModelPreview(influencerResultImage);
+                                                        // Need to fetch blob to set File object, simplified for now just using preview
+                                                        // For full functionality, we'd convert base64 to File here
+                                                        fetch(influencerResultImage)
+                                                            .then(res => res.blob())
+                                                            .then(blob => {
+                                                                const file = new File([blob], "ai-influencer.png", { type: "image/png" });
+                                                                setModelFile(file);
+                                                                setActiveTab('try-on');
+                                                            });
+                                                    }}
+                                                >
+                                                    👗 Dùng làm Mẫu Try-On
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        </section>
+                    )}
                 </div>
             )}
         </div>
