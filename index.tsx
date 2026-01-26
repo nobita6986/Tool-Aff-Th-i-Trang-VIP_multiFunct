@@ -2,6 +2,117 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
+// --- CONSTANTS & DATA ---
+const INFLUENCER_DATA = {
+    genders: [
+        { label: 'Nữ (Female)', value: 'Female' },
+        { label: 'Nam (Male)', value: 'Male' },
+        { label: 'Phi nhị nguyên (Non-binary)', value: 'Non-binary' },
+        { label: 'Androgynous (Trung tính)', value: 'Androgynous' }
+    ],
+    ages: [
+        { label: '18–20 (Teen/Young adult)', value: '18–20 years old (Teen/Young adult)' },
+        { label: '20s (Trẻ)', value: '20s (Young Adult)' },
+        { label: '30s (Trưởng thành)', value: '30s (Mature)' },
+        { label: '40s (Chững chạc)', value: '40s (Experienced/Middle Age)' }
+    ],
+    ethnicities: [
+        { label: 'Châu Á (Việt Nam)', value: 'Asian (Vietnamese)' },
+        { label: 'Châu Á (Đông Á)', value: 'East Asian (Korean/Japanese/Chinese)' },
+        { label: 'Châu Á (Đông Nam Á)', value: 'Southeast Asian' },
+        { label: 'Âu (European)', value: 'Caucasian (European)' },
+        { label: 'Mỹ Latin (Latina)', value: 'Latina/Hispanic' },
+        { label: 'Trung Đông (Middle Eastern)', value: 'Middle Eastern' },
+        { label: 'Phi (African)', value: 'Black/African Descent' }
+    ],
+    hairOptions: {
+        lengths: [
+            { label: 'Dài', value: 'Long' },
+            { label: 'Ngang vai', value: 'Shoulder-length' },
+            { label: 'Tóc Bob ngắn', value: 'Short bob' },
+            { label: 'Tóc tém (Pixie)', value: 'Pixie cut' }
+        ],
+        colors: [
+            { label: 'Đen tự nhiên', value: 'Natural black' },
+            { label: 'Nâu Chocolate', value: 'Chocolate brown' },
+            { label: 'Nâu hạt dẻ', value: 'Chestnut brown' },
+            { label: 'Nâu khói', value: 'Ash brown' },
+            { label: 'Vàng mật ong', value: 'Honey blonde' },
+            { label: 'Vàng bạch kim', value: 'Platinum blonde' },
+            { label: 'Đỏ rượu', value: 'Burgundy' },
+            { label: 'Xám khói', value: 'Smoky gray' }
+        ],
+        textures: [
+            { label: 'Thẳng mượt', value: 'Straight silky' },
+            { label: 'Gợn sóng nhẹ', value: 'Soft wavy' },
+            { label: 'Xoăn lơi', value: 'Loose curls' },
+            { label: 'Xoăn xù', value: 'Tight curls' }
+        ],
+        bangs: [
+            { label: 'Mái thưa Hàn Quốc', value: 'Airy bangs (Korean style)' },
+            { label: 'Mái bằng', value: 'Blunt bangs' },
+            { label: 'Mái bay', value: 'Curtain bangs' },
+            { label: 'Không mái', value: 'No bangs' }
+        ],
+        presets: [
+            { label: 'Dài đen thẳng mượt + mái thưa', value: 'Long Natural black Straight silky hair with Airy bangs' },
+            { label: 'Dài nâu chocolate gợn sóng + mái bay', value: 'Long Chocolate brown Soft wavy hair with Curtain bangs' },
+            { label: 'Bob ngắn đen + không mái', value: 'Short bob Natural black Straight hair, No bangs' },
+            { label: 'Ngang vai nâu khói + mái thưa', value: 'Shoulder-length Ash brown hair with Airy bangs' },
+            { label: 'Dài vàng mật ong + xoăn lơi + mái bay', value: 'Long Honey blonde Loose curls with Curtain bangs' }
+        ]
+    },
+    eyes: [
+        { label: 'Nâu (Brown)', value: 'Brown' },
+        { label: 'Nâu đậm (Dark brown)', value: 'Dark brown' },
+        { label: 'Hổ phách (Amber)', value: 'Amber' },
+        { label: 'Xanh lá (Green)', value: 'Green' },
+        { label: 'Xanh dương (Blue)', value: 'Blue' },
+        { label: 'Xám (Gray)', value: 'Gray' }
+    ],
+    bodyTypes: [
+        { label: 'Mảnh & fit (Slim & fit)', value: 'Slim & fit' },
+        { label: 'Mảnh (Slim)', value: 'Slim/Slender' },
+        { label: 'Cân đối (Balanced)', value: 'Balanced/Average' },
+        { label: 'Thể thao (Athletic)', value: 'Athletic/Toned' },
+        { label: 'Đường cong (Curvy)', value: 'Curvy/Hourglass' },
+        { label: 'Cao & mảnh (Tall & slim)', value: 'Tall & slim (Model like)' },
+        { label: 'Nhỏ nhắn (Petite)', value: 'Petite' }
+    ],
+    styles: [
+        { label: 'Cute casual (Dễ thương đời thường)', value: 'Cute casual, comfortable, pastel tones' },
+        { label: 'Modern luxury (Hiện đại sang)', value: 'Modern luxury, high-end fashion, old money vibe' },
+        { label: 'Minimalist (Tối giản)', value: 'Minimalist, clean lines, neutral colors' },
+        { label: 'Korean chic (Hàn Quốc thanh lịch)', value: 'Korean chic, trendy, layered outfit' },
+        { label: 'Streetwear (Đường phố)', value: 'Streetwear, oversized, sneakers, edgy' },
+        { label: 'Preppy (Học đường)', value: 'Preppy, academic, blazer, plaid skirt' },
+        { label: 'Office core (Đi làm)', value: 'Office core, professional, blazer, trousers' },
+        { label: 'Vintage (Cổ điển)', value: 'Vintage, retro aesthetic, 90s vibe' },
+        { label: 'Y2K (Gen Z)', value: 'Y2K aesthetic, colorful, crop top, low rise' },
+        { label: 'Coquette / Balletcore', value: 'Coquette aesthetic, balletcore, ribbons, lace, soft pink' }
+    ],
+    scenarios: {
+        'Cafe & Lifestyle': [
+            { label: 'Uống cà phê, nắng sáng', value: 'Drinking coffee in a cozy cafe, morning sunlight through window' },
+            { label: 'Đọc sách cạnh cửa sổ', value: 'Reading a book by a large window, peaceful atmosphere' },
+            { label: 'Đi dạo phố chiều tà', value: 'Walking on a city street during golden hour, evening stroll' }
+        ],
+        'Fashion Shots': [
+            { label: 'OOTD trước gương', value: 'Mirror selfie in a modern bedroom, OOTD shot' },
+            { label: 'Street style vỉa hè', value: 'Full body street style shot on an urban sidewalk, blurred city background' },
+            { label: 'Lookbook nền trơn', value: 'Professional studio lookbook shot, seamless grey background, high fashion pose' }
+        ],
+        'Work / School': [
+            { label: 'Sảnh văn phòng sáng', value: 'Standing in a modern office building lobby, morning light, holding a tablet' },
+            { label: 'Đi học / Workshop', value: 'Sitting in a creative workshop or university campus, holding a notebook' }
+        ],
+        'Date / Event': [
+            { label: 'Hẹn hò tối lãng mạn', value: 'Fine dining restaurant at night, candle light, romantic date night atmosphere' },
+            { label: 'Sự kiện nhẹ (Cocktail)', value: 'Holding a cocktail glass at a casual social event, warm ambient lighting' }
+        ]
+    }
+};
+
 // --- UTILS ---
 
 // Tooltip Component
@@ -26,7 +137,6 @@ const Tooltip = ({ text, children, style }: { text: string; children?: React.Rea
 };
 
 // Helper: Remove solid background via Flood Fill from corners
-// This assumes the background is nearly white and contiguous from the corners.
 const removeBackground = async (imageSrc: string): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
@@ -44,16 +154,7 @@ const removeBackground = async (imageSrc: string): Promise<string> => {
             const w = canvas.width;
             const h = canvas.height;
 
-            // We'll use a flood fill from 4 corners
-            const stack: [number, number][] = [];
-            const visited = new Uint8Array(w * h); // 0 = unvisited, 1 = visited
-
-            // Threshold for "White" (or background color)
-            // AI generated white might have slight noise, so we use a threshold.
-            // 240/255 is safe for "Pure White" prompts.
             const threshold = 230; 
-
-            // Helper to check if pixel is "background-like" (very bright/white)
             const isBackground = (idx: number) => {
                 const r = data[idx];
                 const g = data[idx+1];
@@ -61,7 +162,8 @@ const removeBackground = async (imageSrc: string): Promise<string> => {
                 return r > threshold && g > threshold && b > threshold;
             };
 
-            // Add corners to stack if they look like background
+            const stack: [number, number][] = [];
+            const visited = new Uint8Array(w * h);
             const corners = [[0,0], [w-1, 0], [0, h-1], [w-1, h-1]];
             for(const [cx, cy] of corners) {
                 const idx = (cy * w + cx) * 4;
@@ -71,15 +173,11 @@ const removeBackground = async (imageSrc: string): Promise<string> => {
                 }
             }
 
-            // Flood Fill (DFS)
             while(stack.length > 0) {
                 const [x, y] = stack.pop()!;
                 const idx = (y * w + x) * 4;
-                
-                // Make pixel transparent
                 data[idx + 3] = 0; 
 
-                // Check Neighbors (4-way)
                 const neighbors = [[x+1, y], [x-1, y], [x, y+1], [x, y-1]];
                 for(const [nx, ny] of neighbors) {
                     if(nx >= 0 && nx < w && ny >= 0 && ny < h) {
@@ -98,7 +196,7 @@ const removeBackground = async (imageSrc: string): Promise<string> => {
             ctx.putImageData(imageData, 0, 0);
             resolve(canvas.toDataURL('image/png'));
         };
-        img.onerror = () => resolve(imageSrc); // Fallback to original on error
+        img.onerror = () => resolve(imageSrc); 
         img.src = imageSrc;
     });
 };
@@ -195,15 +293,23 @@ const App = () => {
 
     // AI Influencer Mode State
     const [influencerSettings, setInfluencerSettings] = useState({
-        gender: 'female',
+        gender: 'Female',
         age: '20s (Young Adult)',
         ethnicity: 'Asian (Vietnamese)',
-        hair: 'Long Black Silky',
-        eyes: 'Brown',
-        bodyType: 'Slim & Fit',
-        style: 'Modern Luxury',
-        scenario: 'Drinking coffee in a cozy cafe, morning sunlight'
+        hair: 'Long Natural black Straight silky hair with Airy bangs (Korean style)',
+        eyes: 'Dark brown',
+        bodyType: 'Slim & fit',
+        style: 'Modern luxury, high-end fashion, old money vibe',
+        scenario: 'Drinking coffee in a cozy cafe, morning sunlight through window'
     });
+    // State to manage individual hair components before constructing the full string
+    const [hairBuilder, setHairBuilder] = useState({
+        length: 'Long',
+        color: 'Natural black',
+        texture: 'Straight silky',
+        bangs: 'Airy bangs (Korean style)'
+    });
+    
     const [influencerResultImage, setInfluencerResultImage] = useState<string | null>(null);
     const [isCreatingInfluencer, setIsCreatingInfluencer] = useState(false);
 
@@ -273,6 +379,50 @@ const App = () => {
             setModalSelectedProvider(storedActiveProvider);
         }
     }, []);
+
+    // Update Hair String when builder changes
+    useEffect(() => {
+        // Only update if we are not manually overriding via typing
+        // Ideally, we just sync them for now
+        const hairStr = `${hairBuilder.length} ${hairBuilder.color} ${hairBuilder.texture} hair with ${hairBuilder.bangs}`;
+        // We only auto-update if the user hasn't completely typed something else? 
+        // For simplicity, let's make the builder drive the input, but input remains editable.
+        // We won't use a dedicated effect to overwrite constantly, we'll use a handler.
+    }, [hairBuilder]);
+
+    const updateHairFromBuilder = (newPart: Partial<typeof hairBuilder>) => {
+        const newBuilder = { ...hairBuilder, ...newPart };
+        setHairBuilder(newBuilder);
+        const hairStr = `${newBuilder.length} ${newBuilder.color} ${newBuilder.texture} hair with ${newBuilder.bangs}`;
+        setInfluencerSettings(prev => ({ ...prev, hair: hairStr }));
+    };
+
+    const randomizeInfluencer = () => {
+        const randomItem = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+        const randomOption = (arr: {value: string}[]) => randomItem(arr).value;
+
+        // Hair Random
+        const len = randomItem(INFLUENCER_DATA.hairOptions.lengths);
+        const col = randomItem(INFLUENCER_DATA.hairOptions.colors);
+        const tex = randomItem(INFLUENCER_DATA.hairOptions.textures);
+        const bng = randomItem(INFLUENCER_DATA.hairOptions.bangs);
+        const hairStr = `${len.value} ${col.value} ${tex.value} hair with ${bng.value}`;
+        setHairBuilder({ length: len.value, color: col.value, texture: tex.value, bangs: bng.value });
+
+        // Scenario Random (Flatten)
+        const allScenarios = Object.values(INFLUENCER_DATA.scenarios).flat();
+
+        setInfluencerSettings({
+            gender: randomOption(INFLUENCER_DATA.genders),
+            age: randomOption(INFLUENCER_DATA.ages),
+            ethnicity: randomOption(INFLUENCER_DATA.ethnicities),
+            hair: hairStr,
+            eyes: randomOption(INFLUENCER_DATA.eyes),
+            bodyType: randomOption(INFLUENCER_DATA.bodyTypes),
+            style: randomOption(INFLUENCER_DATA.styles),
+            scenario: randomOption(allScenarios)
+        });
+    };
 
     const addApiKeys = () => {
         if (!tempKeyInput.trim()) return;
@@ -1065,7 +1215,8 @@ const App = () => {
                 </nav>
             </header>
 
-            {/* --- GUIDE MODAL --- */}
+            {/* --- GUIDE MODAL & SETTINGS MODAL (KEEP AS IS, omitted for brevity in change block if not changing) --- */}
+            {/* ... GUIDE & SETTINGS ... */}
             {showGuide && (
                 <div className="modal-overlay">
                     <div className="modal-content settings-modal-wide">
@@ -1074,6 +1225,7 @@ const App = () => {
                             <button className="modal-close" onClick={() => setShowGuide(false)}>×</button>
                         </div>
                         <div className="modal-main guide-content">
+                            {/* Keep guide content */}
                             <div className="guide-features">
                                 <div className="feature-box">
                                     <strong>Công nghệ Đột phá</strong>
@@ -1088,7 +1240,7 @@ const App = () => {
                                     Hỗ trợ thay đổi tư thế (Pose), bối cảnh, và tự động xóa phông nền (Alpha channel).
                                 </div>
                             </div>
-
+                            
                             <div className="guide-section">
                                 <h4>1. Virtual Try-On (Thử đồ ảo)</h4>
                                 <ul>
@@ -1134,109 +1286,26 @@ const App = () => {
                     </div>
                 </div>
             )}
-
-            {/* --- SETTINGS MODAL --- */}
+            
             {showSettings && (
-                <div className="modal-overlay">
+                 <div className="modal-overlay">
                     <div className="modal-content settings-modal-wide">
                         <div className="modal-header">
                             <h3>Quản lý API Key</h3>
                             <button className="modal-close" onClick={() => setShowSettings(false)}>×</button>
                         </div>
-                        
                         <div className="modal-body">
-                            {/* Sidebar */}
+                           {/* Keep settings body */}
                             <div className="modal-sidebar">
-                                <button 
-                                    className={`sidebar-item ${modalSelectedProvider === 'gemini' ? 'active' : ''}`}
-                                    onClick={() => setModalSelectedProvider('gemini')}
-                                >
-                                    <span className="icon">💎</span> Gemini
-                                    <span className="count-badge">{apiKeys.gemini.length}</span>
-                                </button>
-                                <button 
-                                    className={`sidebar-item ${modalSelectedProvider === 'openai' ? 'active' : ''}`}
-                                    onClick={() => setModalSelectedProvider('openai')}
-                                >
-                                    <span className="icon">🌀</span> Open AI
-                                    <span className="count-badge">{apiKeys.openai.length}</span>
-                                </button>
-                                <button 
-                                    className={`sidebar-item ${modalSelectedProvider === 'grok' ? 'active' : ''}`}
-                                    onClick={() => setModalSelectedProvider('grok')}
-                                >
-                                    <span className="icon">🚀</span> Grok
-                                    <span className="count-badge">{apiKeys.grok.length}</span>
-                                </button>
-
-                                <div className="active-provider-section">
-                                    <label>Đang sử dụng:</label>
-                                    <select 
-                                        value={activeProvider} 
-                                        onChange={(e) => handleSetActiveProvider(e.target.value as Provider)}
-                                        className="provider-select"
-                                    >
-                                        <option value="gemini">Gemini (Khuyên dùng)</option>
-                                        <option value="openai">Open AI</option>
-                                        <option value="grok">Grok</option>
-                                    </select>
-                                </div>
+                                <button className={`sidebar-item ${modalSelectedProvider === 'gemini' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('gemini')}><span className="icon">💎</span> Gemini <span className="count-badge">{apiKeys.gemini.length}</span></button>
+                                <button className={`sidebar-item ${modalSelectedProvider === 'openai' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('openai')}><span className="icon">🌀</span> Open AI <span className="count-badge">{apiKeys.openai.length}</span></button>
+                                <button className={`sidebar-item ${modalSelectedProvider === 'grok' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('grok')}><span className="icon">🚀</span> Grok <span className="count-badge">{apiKeys.grok.length}</span></button>
+                                <div className="active-provider-section"><label>Đang sử dụng:</label><select value={activeProvider} onChange={(e) => handleSetActiveProvider(e.target.value as Provider)} className="provider-select"><option value="gemini">Gemini (Khuyên dùng)</option><option value="openai">Open AI</option><option value="grok">Grok</option></select></div>
                             </div>
-
-                            {/* Main Content */}
                             <div className="modal-main">
-                                <h4 style={{marginTop: 0, marginBottom: '10px', textTransform: 'capitalize'}}>
-                                    Quản lý Key {modalSelectedProvider}
-                                </h4>
-                                <p style={{color: '#aaa', fontSize: '0.85rem', marginBottom: '15px'}}>
-                                    {modalSelectedProvider === 'gemini' 
-                                        ? "Dùng để tạo ảnh Try-On, Fix da, Nâng ngực." 
-                                        : "Chức năng tạo ảnh với provider này đang phát triển."}
-                                </p>
-                                
-                                <div className="api-input-group">
-                                    <textarea 
-                                        value={tempKeyInput} 
-                                        onChange={(e) => setTempKeyInput(e.target.value)}
-                                        placeholder={`Dán danh sách Key ${modalSelectedProvider} (mỗi dòng một Key)...`}
-                                        className="api-textarea"
-                                        rows={3}
-                                    />
-                                    <button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button>
-                                </div>
-
-                                <div className="key-list-container">
-                                    <div className="key-list-header">
-                                        Danh sách Key ({apiKeys[modalSelectedProvider].length})
-                                    </div>
-                                    <div className="key-list">
-                                        {apiKeys[modalSelectedProvider].length === 0 ? (
-                                            <div className="empty-keys">Chưa có Key nào.</div>
-                                        ) : (
-                                            apiKeys[modalSelectedProvider].map((k, i) => (
-                                                <div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}>
-                                                    <div className="key-info">
-                                                        <span className={`key-status-dot ${modalSelectedProvider === activeProvider ? 'active' : 'inactive'}`}></span>
-                                                        <span className="key-text">...{k.slice(-6)}</span>
-                                                    </div>
-                                                    <button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                                
-                                <div style={{marginTop: 'auto', paddingTop: '10px', fontSize: '0.8rem'}}>
-                                    {modalSelectedProvider === 'gemini' && (
-                                        <a href="https://aistudio.google.com/app/apikey" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy Gemini API Key</a>
-                                    )}
-                                    {modalSelectedProvider === 'openai' && (
-                                        <a href="https://platform.openai.com/api-keys" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy OpenAI API Key</a>
-                                    )}
-                                    {modalSelectedProvider === 'grok' && (
-                                        <a href="https://console.x.ai/" target="_blank" style={{color: '#60a5fa'}}>👉 Lấy Grok API Key</a>
-                                    )}
-                                </div>
+                                <h4 style={{marginTop: 0, marginBottom: '10px', textTransform: 'capitalize'}}>Quản lý Key {modalSelectedProvider}</h4>
+                                <div className="api-input-group"><textarea value={tempKeyInput} onChange={(e) => setTempKeyInput(e.target.value)} placeholder={`Dán danh sách Key ${modalSelectedProvider}...`} className="api-textarea" rows={3}/><button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button></div>
+                                <div className="key-list-container"><div className="key-list-header">Danh sách Key ({apiKeys[modalSelectedProvider].length})</div><div className="key-list">{apiKeys[modalSelectedProvider].length === 0 ? (<div className="empty-keys">Chưa có Key nào.</div>) : (apiKeys[modalSelectedProvider].map((k, i) => (<div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}><div className="key-info"><span className={`key-status-dot ${modalSelectedProvider === activeProvider ? 'active' : 'inactive'}`}></span><span className="key-text">...{k.slice(-6)}</span></div><button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button></div>)))}</div></div>
                             </div>
                         </div>
                     </div>
@@ -1245,644 +1314,213 @@ const App = () => {
 
              {error && <div className="error-message">{error}</div>}
              
+             {/* --- VIRTUAL TRY ON TAB --- */}
              {activeTab === 'try-on' && (
-                <>
+                 <main className="workflow-container">
                     <div className="mode-switcher-container">
                         <Tooltip text="Chế độ thay toàn bộ trang phục từ một ảnh duy nhất.">
-                            <button 
-                                className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => { setTryOnMode('full'); setError(null); }}
-                            >
-                                ✨ Full Set (Nguyên Bộ)
-                            </button>
+                            <button className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setTryOnMode('full'); setError(null); }}>✨ Full Set (Nguyên Bộ)</button>
                         </Tooltip>
                         <Tooltip text="Chế độ phối hợp nhiều món đồ lẻ (áo, quần, giày...) lên người mẫu.">
-                            <button 
-                                className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => { setTryOnMode('mix'); setError(null); }}
-                            >
-                                🧩 Mix & Match (Lẻ)
-                            </button>
+                            <button className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setTryOnMode('mix'); setError(null); }}>🧩 Mix & Match (Lẻ)</button>
                         </Tooltip>
                     </div>
 
-                    <main className="workflow-container">
-                        {tryOnMode === 'full' ? (
-                            <>
-                                <section className="step-card full-width">
-                                    <h2><span className="step-number">1</span> Cấu hình & Dữ liệu</h2>
-                                    <div className="garment-source-container">
-                                        <div className="full-mode-container">
-                                            <div className="dual-upload-container">
-                                                <div className="upload-box">
-                                                    <Tooltip text="Ảnh chứa bộ đồ bạn muốn mặc thử. Có thể là ảnh trải sàn hoặc ma-nơ-canh.">
-                                                        <ImageUploader
-                                                            label="1. Ảnh Set Đồ (Chính)"
-                                                            image={fullOutfitPreview}
-                                                            onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)}
-                                                            onRemove={() => { setFullOutfitFile(null); setFullOutfitPreview(null); }}
-                                                        >
-                                                            <p>Tải ảnh chứa nguyên set đồ</p>
-                                                        </ImageUploader>
-                                                    </Tooltip>
-
-                                                    <div className="reference-section">
-                                                        <div className="reference-header">
-                                                            <label>Ảnh tham khảo (Tùy chọn)</label>
-                                                            <span>{referenceFiles.length}/3</span>
-                                                        </div>
-                                                        
-                                                        <div className="reference-grid">
-                                                            {referencePreviews.map((src, idx) => (
-                                                                <div key={idx} className="reference-item">
-                                                                    <img src={src} />
-                                                                    <button onClick={() => removeReferenceImage(idx)}>×</button>
-                                                                </div>
-                                                            ))}
-                                                            
-                                                            {referenceFiles.length < 3 && (
-                                                                <div 
-                                                                    className="reference-add-btn"
-                                                                    onClick={() => document.getElementById('ref-upload')?.click()}
-                                                                >
-                                                                    +
-                                                                </div>
-                                                            )}
-                                                            <input 
-                                                                id="ref-upload" 
-                                                                type="file" 
-                                                                accept="image/*" 
-                                                                onChange={handleReferenceUpload} 
-                                                                style={{display: 'none'}} 
-                                                            />
-                                                        </div>
-                                                        <p className="reference-note">
-                                                            *Upload thêm góc nhìn khác để AI hiểu rõ hơn.
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="upload-box">
-                                                    <Tooltip text="Ảnh người mẫu sẽ mặc thử đồ. Khuôn mặt và vóc dáng sẽ được giữ nguyên.">
-                                                        <ImageUploader
-                                                            label="2. Ảnh Người Mẫu"
-                                                            image={modelPreview}
-                                                            onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                                                            onRemove={() => { setModelFile(null); setModelPreview(null); }}
-                                                        >
-                                                            <p>Tải ảnh người mẫu</p>
-                                                        </ImageUploader>
-                                                    </Tooltip>
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="settings-panel">
-                                                <div className="settings-columns">
-                                                    <div className="settings-card">
-                                                        <div className="settings-card-header">
-                                                            <label>3. Chọn mục cần thay:</label>
-                                                        </div>
-                                                        <div className="settings-card-body">
-                                                            <div className="option-toggles-list">
-                                                                <button 
-                                                                    className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`}
-                                                                    onClick={() => toggleFullSetOption('clothing')}
-                                                                >
-                                                                    <span>👗 Quần/Áo/Váy</span>
-                                                                    {fullSetOptions.clothing && <span>✓</span>}
-                                                                </button>
-                                                                <button 
-                                                                    className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`}
-                                                                    onClick={() => toggleFullSetOption('shoes')}
-                                                                >
-                                                                    <span>👠 Giày/Dép</span>
-                                                                    {fullSetOptions.shoes && <span>✓</span>}
-                                                                </button>
-                                                                <button 
-                                                                    className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`}
-                                                                    onClick={() => toggleFullSetOption('jewelry')}
-                                                                >
-                                                                    <span>💎 Trang sức</span>
-                                                                    {fullSetOptions.jewelry && <span>✓</span>}
-                                                                </button>
-                                                                <button 
-                                                                    className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`}
-                                                                    onClick={() => toggleFullSetOption('bag')}
-                                                                >
-                                                                    <span>👜 Túi xách</span>
-                                                                    {fullSetOptions.bag && <span>✓</span>}
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="settings-card">
-                                                        <div className="settings-card-header">
-                                                            <label>4. Cài đặt tạo ảnh:</label>
-                                                        </div>
-                                                        <div className="settings-card-body">
-                                                            <div className="option-toggles-list">
-                                                                <div className="aspect-ratio-selector">
-                                                                    <Tooltip text="Phù hợp cho Story/Reels/Tiktok.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                                            onClick={() => setAspectRatio('9:16')}
-                                                                        >
-                                                                            📱 Dọc (9:16)
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                    <Tooltip text="Phù hợp cho bài đăng Facebook/Web.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                                            onClick={() => setAspectRatio('16:9')}
-                                                                        >
-                                                                            💻 Ngang (16:9)
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                </div>
-
-                                                                <div className="settings-grid-2col">
-                                                                    <Tooltip text="AI sẽ tự sáng tạo tư thế mới dựa trên trang phục. Tắt để giữ nguyên dáng đứng cũ.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                                            onClick={() => toggleGenerationSetting('changePose')}
-                                                                        >
-                                                                            <span>💃 Đổi tư thế</span>
-                                                                            {generationSettings.changePose && <span>✓</span>}
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                    
-                                                                    <Tooltip text="Nếu ảnh gốc bị cắt chân, AI sẽ tự vẽ thêm để thành ảnh toàn thân.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                                            onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                                        >
-                                                                            <span>🧍 Toàn thân</span>
-                                                                            {generationSettings.generateFullBody && <span>✓</span>}
-                                                                        </button>
-                                                                    </Tooltip>
-
-                                                                    <Tooltip text="Thay thế nền cũ bằng studio chuyên nghiệp hoặc bối cảnh phù hợp.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                                            onClick={() => toggleGenerationSetting('changeBackground')}
-                                                                            disabled={generationSettings.transparentBackground}
-                                                                            style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}
-                                                                        >
-                                                                            <span>🏞️ Đổi nền</span>
-                                                                            {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
-                                                                        </button>
-                                                                    </Tooltip>
-
-                                                                    <Tooltip text="Tách nền, tạo ra ảnh PNG trong suốt. Rất tiện để ghép vào thiết kế khác.">
-                                                                        <button 
-                                                                            className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
-                                                                            onClick={() => toggleGenerationSetting('transparentBackground')}
-                                                                        >
-                                                                            <span>🔳 Nền rỗng</span>
-                                                                            {generationSettings.transparentBackground && <span>✓</span>}
-                                                                        </button>
-                                                                    </Tooltip>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-                            </>
-                        ) : (
-                            <>
-                                <section className="step-card full-width">
-                                    <h2><span className="step-number">1</span> Ảnh Người Mẫu</h2>
-                                    <div className="model-upload-center">
-                                        <ImageUploader
-                                            image={modelPreview}
-                                            onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}
-                                        >
-                                            <p>+ Tải ảnh người mẫu</p>
-                                        </ImageUploader>
-                                    </div>
-                                </section>
-
-                                <section className="step-card full-width">
-                                    <h2><span className="step-number">2</span> Chọn Đồ Mix & Match</h2>
-                                    <div className="mix-mode-grid">
-                                        <p className="section-desc">
-                                            Tải lên các món đồ riêng lẻ bạn muốn mặc cho người mẫu.
-                                        </p>
-                                        
-                                        <div className="extracted-items">
-                                            <ImageUploader
-                                                label="👗 Váy (Bộ)"
-                                                image={dressImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'dress')}
-                                                onRemove={() => handleRemoveGarment('dress')}
-                                            />
-
-                                            <ImageUploader
-                                                label="👚 Áo"
-                                                image={topImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'top')}
-                                                onRemove={() => handleRemoveGarment('top')}
-                                            />
-
-                                            <ImageUploader
-                                                label="👖 Quần/Váy"
-                                                image={bottomImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'bottom')}
-                                                onRemove={() => handleRemoveGarment('bottom')}
-                                            />
-
-                                            <ImageUploader
-                                                label="👠 Giày"
-                                                image={shoesImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'shoes')}
-                                                onRemove={() => handleRemoveGarment('shoes')}
-                                            />
-
-                                            <ImageUploader
-                                                label="💎 Trang sức"
-                                                image={jewelryImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'jewelry')}
-                                                onRemove={() => handleRemoveGarment('jewelry')}
-                                            />
-
-                                            <ImageUploader
-                                                label="👜 Túi"
-                                                image={bagImage}
-                                                onImageSelect={(e) => handleDirectGarmentUpload(e, 'bag')}
-                                                onRemove={() => handleRemoveGarment('bag')}
-                                            />
-                                        </div>
-
-                                        <div className="mix-mode-options">
-                                            <label className="uploader-label" style={{marginBottom: '0.8rem', display: 'block'}}>Cài đặt nâng cao:</label>
-                                            <div className="mix-mode-actions">
-                                                 <div className="aspect-ratio-selector">
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                        onClick={() => setAspectRatio('9:16')}
-                                                    >
-                                                        📱 Dọc (9:16)
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                        onClick={() => setAspectRatio('16:9')}
-                                                    >
-                                                        💻 Ngang (16:9)
-                                                    </button>
-                                                </div>
-                                                
-                                                <div className="settings-grid-2col" style={{width: '100%'}}>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('changePose')}
-                                                    >
-                                                        💃 Đổi tư thế
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('generateFullBody')}
-                                                    >
-                                                        🧍 Toàn thân
-                                                    </button>
-                                                    <button 
-                                                        className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('changeBackground')}
-                                                        disabled={generationSettings.transparentBackground}
-                                                    >
-                                                        🏞️ Đổi nền
-                                                    </button>
-                                                     <button 
-                                                        className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
-                                                        onClick={() => toggleGenerationSetting('transparentBackground')}
-                                                    >
-                                                        🔳 Nền rỗng
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </section>
-                            </>
-                        )}
-
-                        <section className="step-card full-width">
-                            <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
-                            <div className={`finalize-box ${tryOnMode === 'full' ? 'balanced-layout' : ''}`}>
-                                <div className="summary-info">
-                                    <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
-                                    
-                                    {tryOnMode === 'mix' && (
-                                        <ul className="status-list">
-                                            <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
-                                            <li>Phụ kiện: {[
-                                                shoesImage ? 'Giày' : '',
-                                                jewelryImage ? 'Trang sức' : '',
-                                                bagImage ? 'Túi' : ''
-                                            ].filter(Boolean).join(', ') || 'Không'}</li>
-                                        </ul>
-                                    )}
-                                    
-                                    {tryOnMode === 'full' && (
-                                        <ul className="status-list balanced-list">
-                                            <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                            <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                            {referenceFiles.length > 0 && <li>Ảnh tham khảo: {referenceFiles.length} ảnh</li>}
-                                            <li>Thay: 
-                                                {[
-                                                    fullSetOptions.clothing ? 'Áo/Quần' : '',
-                                                    fullSetOptions.shoes ? 'Giày' : '',
-                                                    fullSetOptions.jewelry ? 'Trang sức' : '',
-                                                    fullSetOptions.bag ? 'Túi' : ''
-                                                ].filter(Boolean).join(', ') || 'Chưa chọn'}
-                                            </li>
-                                        </ul>
-                                    )}
-
-                                    <div className="generation-settings-summary">
-                                        {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
-                                        {generationSettings.transparentBackground ? '✅ Nền trắng' : (generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền')} • 
-                                        {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
-                                        {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
-                                    </div>
-                                </div>
-
-                                <button 
-                                    className="btn btn-primary start-btn" 
-                                    onClick={handleGenerateTryOn} 
-                                    disabled={
-                                        isGenerating || 
-                                        !modelFile || 
-                                        (tryOnMode === 'mix' && !dressImage && !topImage && !bottomImage && !shoesImage && !jewelryImage && !bagImage) ||
-                                        (tryOnMode === 'full' && (!fullOutfitFile || Object.values(fullSetOptions).every(v => !v)))
-                                    }
-                                >
-                                    ✨ {isGenerating ? 'Đang mặc đồ...' : 'Bắt đầu ghép đồ'}
-                                </button>
-                            </div>
-                        </section>
-
-                        {(finalImage || isGenerating) && (
-                            <section className="step-card full-width">
-                                <h2><span className="step-number">✨</span> Kết Quả</h2>
-                                <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                                    {isGenerating ? (
-                                        <div style={{textAlign: 'center'}}>
-                                            <div className="spinner"></div>
-                                            <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang xử lý hình ảnh...</p>
-                                        </div>
-                                    ) : (
-                                        finalImage && (
-                                            <div style={{ width: '100%', textAlign: 'center' }}>
-                                                <img src={finalImage} alt="Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)' }} />
-                                                <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                                                    <a href={finalImage} download={getDownloadFileName('try-on')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
-                                                    <button className="btn btn-secondary" onClick={() => setFinalImage(null)}>🔄 Làm lại</button>
-                                                    <button 
-                                                        className="btn" 
-                                                        style={{ background: '#f59e0b', color: 'white' }}
-                                                        onClick={() => handleTransferToSkinFix(finalImage)}
-                                                    >
-                                                        ✨ Fix da nhựa
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )
-                                    )}
-                                </div>
-                            </section>
-                        )}
-                    </main>
-                </>
-            )}
-
-            {/* --- SWAP FACE TAB --- */}
-            {activeTab === 'swap-face' && (
-                <main className="workflow-container">
                     <section className="step-card full-width">
-                        <h2><span className="step-number">1</span> Dữ Liệu Swap Face</h2>
-                        
-                        <div className="dual-upload-container" style={{position: 'relative', alignItems: 'center'}}>
-                            {/* Nút Swap giữa 2 cột */}
-                            <button 
-                                className="swap-btn"
-                                onClick={handleSwapImages}
-                                title="Đổi vị trí ảnh"
-                            >
-                                ↔️
-                            </button>
-
-                            <div className="upload-box">
-                                <Tooltip text="Ảnh chứa cơ thể, trang phục và bối cảnh bạn muốn giữ lại.">
-                                    <ImageUploader
-                                        label="1. Ảnh Gốc (Body/Target)"
-                                        image={swapTargetPreview}
-                                        onImageSelect={(e) => handleFileChange(e, setSwapTargetFile, setSwapTargetPreview)}
-                                        onRemove={() => { setSwapTargetFile(null); setSwapTargetPreview(null); }}
-                                    >
-                                        <p>Tải ảnh gốc (giữ body)</p>
-                                    </ImageUploader>
-                                </Tooltip>
-                            </div>
-                            <div className="upload-box">
-                                <Tooltip text="Ảnh chứa khuôn mặt người bạn muốn ghép vào. Nên chọn ảnh rõ mặt, chính diện.">
-                                    <ImageUploader
-                                        label="2. Ảnh Khuôn Mặt (Source)"
-                                        image={swapSourcePreview}
-                                        onImageSelect={(e) => handleFileChange(e, setSwapSourceFile, setSwapSourcePreview)}
-                                        onRemove={() => { setSwapSourceFile(null); setSwapSourcePreview(null); }}
-                                    >
-                                        <p>Tải ảnh khuôn mặt</p>
-                                    </ImageUploader>
-                                </Tooltip>
-                            </div>
-                        </div>
-
-                         <div className="settings-panel">
-                            <div className="settings-card">
-                                <div className="settings-card-header">
-                                    <label>Cài đặt tạo ảnh:</label>
+                        <h2><span className="step-number">1</span> Cấu hình & Dữ liệu</h2>
+                        {tryOnMode === 'full' ? (
+                            <div className="full-mode-container">
+                                <div className="dual-upload-container">
+                                    <div className="upload-box">
+                                        <ImageUploader label="1. Ảnh Set Đồ" image={fullOutfitPreview} onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)} onRemove={() => {setFullOutfitFile(null); setFullOutfitPreview(null)}}>
+                                            <p>Tải ảnh nguyên set đồ</p>
+                                        </ImageUploader>
+                                        <div className="reference-section" style={{marginTop:'10px'}}>
+                                            <div className="reference-header"><label>Ảnh tham khảo (Tùy chọn)</label><span>{referenceFiles.length}/3</span></div>
+                                            <div className="reference-grid">
+                                                {referencePreviews.map((src, idx) => (
+                                                    <div key={idx} className="reference-item"><img src={src} /><button onClick={() => removeReferenceImage(idx)}>×</button></div>
+                                                ))}
+                                                {referenceFiles.length < 3 && (<div className="reference-add-btn" onClick={() => document.getElementById('ref-upload')?.click()}>+</div>)}
+                                                <input id="ref-upload" type="file" accept="image/*" onChange={handleReferenceUpload} style={{display: 'none'}} />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="upload-box"><ImageUploader label="2. Ảnh Mẫu" image={modelPreview} onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)} onRemove={() => {setModelFile(null); setModelPreview(null)}}><p>Tải ảnh mẫu</p></ImageUploader></div>
                                 </div>
-                                <div className="settings-card-body">
-                                    <div className="option-toggles-list">
-                                        <div className="aspect-ratio-selector">
-                                            <button 
-                                                className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                                onClick={() => setAspectRatio('9:16')}
-                                            >
-                                                📱 Dọc (9:16)
-                                            </button>
-                                            <button 
-                                                className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                                onClick={() => setAspectRatio('16:9')}
-                                            >
-                                                💻 Ngang (16:9)
-                                            </button>
+                                <div className="settings-panel">
+                                    <div className="settings-columns">
+                                        <div className="settings-card">
+                                            <div className="settings-card-header"><label>3. Chọn mục cần thay:</label></div>
+                                            <div className="option-toggles-list">
+                                                <button className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`} onClick={() => toggleFullSetOption('clothing')}><span>👗 Quần/Áo/Váy</span>{fullSetOptions.clothing && <span>✓</span>}</button>
+                                                <button className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`} onClick={() => toggleFullSetOption('shoes')}><span>👠 Giày/Dép</span>{fullSetOptions.shoes && <span>✓</span>}</button>
+                                                <button className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`} onClick={() => toggleFullSetOption('jewelry')}><span>💎 Trang sức</span>{fullSetOptions.jewelry && <span>✓</span>}</button>
+                                                <button className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`} onClick={() => toggleFullSetOption('bag')}><span>👜 Túi xách</span>{fullSetOptions.bag && <span>✓</span>}</button>
+                                            </div>
                                         </div>
-
-                                        <div className="settings-grid-2col">
-                                            <Tooltip text="AI sẽ giữ nguyên quần áo nhưng tạo dáng đứng hoàn toàn mới.">
-                                                <button 
-                                                    className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('changePose')}
-                                                >
-                                                    <span>💃 Đổi tư thế</span>
-                                                    {generationSettings.changePose && <span>✓</span>}
-                                                </button>
-                                            </Tooltip>
-                                            
-                                            <Tooltip text="Đặt nhân vật vào bối cảnh studio hoặc sang trọng hơn.">
-                                                <button 
-                                                    className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('changeBackground')}
-                                                    disabled={generationSettings.transparentBackground}
-                                                >
-                                                    <span>🏞️ Đổi nền</span>
-                                                    {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
-                                                </button>
-                                            </Tooltip>
-
-                                            <Tooltip text="Tách nền, tạo ra ảnh PNG trong suốt.">
-                                                <button 
-                                                    className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
-                                                    onClick={() => toggleGenerationSetting('transparentBackground')}
-                                                >
-                                                    <span>🔳 Nền rỗng</span>
-                                                    {generationSettings.transparentBackground && <span>✓</span>}
-                                                </button>
-                                            </Tooltip>
-                                        </div>
-
-                                        <div className="settings-card-header" style={{marginTop: '15px'}}>
-                                            <label>Biểu cảm khuôn mặt:</label>
-                                        </div>
-                                        <div className="aspect-ratio-selector" style={{flexWrap: 'wrap'}}>
-                                             <button 
-                                                className={`option-btn ${generationSettings.expression === 'default' ? 'active' : ''}`}
-                                                onClick={() => setExpression('default')}
-                                                style={{flex: 1, minWidth: '80px'}}
-                                            >
-                                                😐 Gốc
-                                            </button>
-                                            <button 
-                                                className={`option-btn ${generationSettings.expression === 'happy' ? 'active' : ''}`}
-                                                onClick={() => setExpression('happy')}
-                                                style={{flex: 1, minWidth: '80px'}}
-                                            >
-                                                😄 Vui
-                                            </button>
-                                            <button 
-                                                className={`option-btn ${generationSettings.expression === 'serious' ? 'active' : ''}`}
-                                                onClick={() => setExpression('serious')}
-                                                style={{flex: 1, minWidth: '80px'}}
-                                            >
-                                                😎 Ngầu
-                                            </button>
-                                            <button 
-                                                className={`option-btn ${generationSettings.expression === 'surprised' ? 'active' : ''}`}
-                                                onClick={() => setExpression('surprised')}
-                                                style={{flex: 1, minWidth: '80px'}}
-                                            >
-                                                😮 Wow
-                                            </button>
-                                             <button 
-                                                className={`option-btn ${generationSettings.expression === 'seductive' ? 'active' : ''}`}
-                                                onClick={() => setExpression('seductive')}
-                                                style={{flex: 1, minWidth: '80px'}}
-                                            >
-                                                😏 Cuốn
-                                            </button>
+                                        <div className="settings-card">
+                                            <div className="settings-card-header"><label>4. Cài đặt tạo ảnh:</label></div>
+                                            <div className="option-toggles-list">
+                                                 <div className="aspect-ratio-selector">
+                                                    <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
+                                                    <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
+                                                </div>
+                                                <div className="settings-grid-2col">
+                                                    <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}><span>💃 Đổi tư thế</span>{generationSettings.changePose && <span>✓</span>}</button>
+                                                    <button className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`} onClick={() => toggleGenerationSetting('generateFullBody')}><span>🧍 Toàn thân</span>{generationSettings.generateFullBody && <span>✓</span>}</button>
+                                                    <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground} style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}><span>🏞️ Đổi nền</span>{generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}</button>
+                                                    <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}><span>🔳 Nền rỗng</span>{generationSettings.transparentBackground && <span>✓</span>}</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
+                        ) : (
+                             <div className="mix-mode-grid">
+                                 <div className="model-upload-center" style={{marginBottom: '20px'}}>
+                                     <ImageUploader image={modelPreview} onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}><p>+ Tải ảnh người mẫu</p></ImageUploader>
+                                 </div>
+                                 <div className="extracted-items">
+                                     <ImageUploader label="Váy" image={dressImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'dress')} onRemove={()=>handleRemoveGarment('dress')} />
+                                     <ImageUploader label="Áo" image={topImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'top')} onRemove={()=>handleRemoveGarment('top')} />
+                                     <ImageUploader label="Quần" image={bottomImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'bottom')} onRemove={()=>handleRemoveGarment('bottom')} />
+                                     <ImageUploader label="Giày" image={shoesImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'shoes')} onRemove={()=>handleRemoveGarment('shoes')} />
+                                     <ImageUploader label="Trang sức" image={jewelryImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'jewelry')} onRemove={()=>handleRemoveGarment('jewelry')} />
+                                     <ImageUploader label="Túi" image={bagImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'bag')} onRemove={()=>handleRemoveGarment('bag')} />
+                                 </div>
+                                 <div className="mix-mode-options">
+                                     <div className="aspect-ratio-selector">
+                                        <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
+                                        <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
+                                    </div>
+                                    <div className="settings-grid-2col" style={{marginTop:'10px'}}>
+                                        <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}>💃 Đổi tư thế</button>
+                                        <button className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`} onClick={() => toggleGenerationSetting('generateFullBody')}>🧍 Toàn thân</button>
+                                        <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground}>🏞️ Đổi nền</button>
+                                        <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}>🔳 Nền rỗng</button>
+                                    </div>
+                                 </div>
+                             </div>
+                        )}
+                    </section>
+                    
+                    <section className="step-card full-width">
+                        <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
+                        <div className="finalize-box">
+                             <div className="summary-info">
+                                <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
+                                
+                                {tryOnMode === 'mix' && (
+                                    <ul className="status-list">
+                                        <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
+                                        <li>Phụ kiện: {[
+                                            shoesImage ? 'Giày' : '',
+                                            jewelryImage ? 'Trang sức' : '',
+                                            bagImage ? 'Túi' : ''
+                                        ].filter(Boolean).join(', ') || 'Không'}</li>
+                                    </ul>
+                                )}
+                                
+                                {tryOnMode === 'full' && (
+                                    <ul className="status-list balanced-list">
+                                        <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                        <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
+                                        <li>Thay: 
+                                            {[
+                                                fullSetOptions.clothing ? 'Áo/Quần' : '',
+                                                fullSetOptions.shoes ? 'Giày' : '',
+                                                fullSetOptions.jewelry ? 'Trang sức' : '',
+                                                fullSetOptions.bag ? 'Túi' : ''
+                                            ].filter(Boolean).join(', ') || 'Chưa chọn'}
+                                        </li>
+                                    </ul>
+                                )}
+
+                                <div className="generation-settings-summary">
+                                    {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
+                                    {generationSettings.transparentBackground ? '✅ Nền trắng' : (generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền')} • 
+                                    {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
+                                    {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
+                                </div>
+                             </div>
+                             <button className="btn btn-primary start-btn" onClick={handleGenerateTryOn} disabled={isGenerating || !modelFile}>
+                                ✨ {isGenerating ? 'Đang xử lý...' : 'Bắt đầu ghép đồ'}
+                             </button>
                         </div>
                     </section>
 
-                    <section className="step-card full-width">
-                         <h2><span className="step-number">2</span> Thực Hiện</h2>
-                         <button 
-                            className="btn btn-primary start-btn" 
-                            style={{background: 'linear-gradient(135deg, #10b981, #059669)'}}
-                            onClick={handleSwapFace} 
-                            disabled={isSwapping || !swapTargetFile || !swapSourceFile}
-                        >
+                    {(finalImage || isGenerating) && (<section className="step-card full-width"><h2>Kết quả</h2>{isGenerating ? <div style={{textAlign:'center'}}><div className="spinner"></div><p style={{marginTop:'10px', color:'#888'}}>Đang xử lý...</p></div> : <div style={{textAlign:'center'}}><img src={finalImage} style={{maxWidth:'100%', borderRadius:'8px'}}/><div style={{marginTop:'15px', display:'flex', gap:'10px', justifyContent:'center'}}><a href={finalImage} download="try-on-result.png" className="btn btn-primary" style={{textDecoration:'none'}}>💾 Tải về</a><button className="btn btn-secondary" onClick={()=>setFinalImage(null)}>🔄 Làm lại</button><button className="btn" style={{background:'#f59e0b', color:'white'}} onClick={()=>handleTransferToSkinFix(finalImage)}>✨ Fix da</button></div></div>}</section>)}
+                 </main>
+             )}
+
+             {/* --- SWAP FACE TAB --- */}
+             {activeTab === 'swap-face' && (
+                 <main className="workflow-container">
+                     <section className="step-card full-width">
+                        <h2><span className="step-number">1</span> Dữ liệu Swap Face</h2>
+                        <div className="dual-upload-container" style={{position:'relative', alignItems:'center'}}>
+                            <button className="swap-btn" onClick={handleSwapImages} title="Đổi vị trí">↔️</button>
+                            <div className="upload-box"><ImageUploader label="1. Body (Target)" image={swapTargetPreview} onImageSelect={(e) => handleFileChange(e, setSwapTargetFile, setSwapTargetPreview)} onRemove={()=>{setSwapTargetFile(null); setSwapTargetPreview(null)}}><p>Ảnh giữ Body</p></ImageUploader></div>
+                            <div className="upload-box"><ImageUploader label="2. Face (Source)" image={swapSourcePreview} onImageSelect={(e) => handleFileChange(e, setSwapSourceFile, setSwapSourcePreview)} onRemove={()=>{setSwapSourceFile(null); setSwapSourcePreview(null)}}><p>Ảnh lấy Mặt</p></ImageUploader></div>
+                        </div>
+
+                        <div className="settings-panel">
+                            <div className="settings-card">
+                                <div className="settings-card-header"><label>Cài đặt tạo ảnh:</label></div>
+                                <div className="option-toggles-list">
+                                    <div className="aspect-ratio-selector">
+                                        <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
+                                        <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
+                                    </div>
+                                    <div className="settings-grid-2col">
+                                        <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}><span>💃 Đổi tư thế</span>{generationSettings.changePose && <span>✓</span>}</button>
+                                        <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground}><span>🏞️ Đổi nền</span>{generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}</button>
+                                        <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}><span>🔳 Nền rỗng</span>{generationSettings.transparentBackground && <span>✓</span>}</button>
+                                    </div>
+                                    <div className="settings-card-header" style={{marginTop:'15px'}}><label>Biểu cảm:</label></div>
+                                    <div className="aspect-ratio-selector" style={{flexWrap:'wrap'}}>
+                                        <button className={`option-btn ${generationSettings.expression === 'default' ? 'active' : ''}`} onClick={() => setExpression('default')} style={{flex:1, minWidth:'80px'}}>😐 Gốc</button>
+                                        <button className={`option-btn ${generationSettings.expression === 'happy' ? 'active' : ''}`} onClick={() => setExpression('happy')} style={{flex:1, minWidth:'80px'}}>😄 Vui</button>
+                                        <button className={`option-btn ${generationSettings.expression === 'serious' ? 'active' : ''}`} onClick={() => setExpression('serious')} style={{flex:1, minWidth:'80px'}}>😎 Ngầu</button>
+                                        <button className={`option-btn ${generationSettings.expression === 'surprised' ? 'active' : ''}`} onClick={() => setExpression('surprised')} style={{flex:1, minWidth:'80px'}}>😮 Wow</button>
+                                        <button className={`option-btn ${generationSettings.expression === 'seductive' ? 'active' : ''}`} onClick={() => setExpression('seductive')} style={{flex:1, minWidth:'80px'}}>😏 Cuốn</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                     </section>
+
+                     <section className="step-card full-width">
+                        <h2><span className="step-number">2</span> Thực Hiện</h2>
+                        <button className="btn btn-primary start-btn" onClick={handleSwapFace} disabled={isSwapping || !swapTargetFile || !swapSourceFile} style={{background: 'linear-gradient(135deg, #10b981, #059669)'}}>
                             🎭 {isSwapping ? 'Đang xử lý...' : 'Bắt đầu Swap Face'}
                         </button>
-                    </section>
+                     </section>
 
-                    {(swapResultImage || isSwapping) && (
-                        <section className="step-card full-width">
-                            <h2><span className="step-number">✨</span> Kết Quả</h2>
-                            <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                                {isSwapping ? (
-                                    <div style={{textAlign: 'center'}}>
-                                        <div className="spinner" style={{borderLeftColor: '#10b981'}}></div>
-                                        <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang ghép mặt & xử lý ánh sáng...</p>
-                                    </div>
-                                ) : (
-                                    swapResultImage && (
-                                        <div style={{ width: '100%', textAlign: 'center' }}>
-                                            <img src={swapResultImage} alt="Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px' }} />
-                                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                                                <a href={swapResultImage} download={getDownloadFileName('swap-face')} className="btn btn-primary" style={{textDecoration: 'none', background: '#10b981'}}>💾 Tải về</a>
-                                                <button className="btn btn-secondary" onClick={() => setSwapResultImage(null)}>🔄 Làm lại</button>
-                                                <button 
-                                                    className="btn" 
-                                                    style={{ background: '#f59e0b', color: 'white' }}
-                                                    onClick={() => handleTransferToSkinFix(swapResultImage)}
-                                                >
-                                                    ✨ Fix da nhựa
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )
-                                )}
-                            </div>
-                        </section>
-                    )}
-                </main>
-            )}
+                     {(swapResultImage || isSwapping) && (<section className="step-card full-width"><h2>Kết quả</h2>{isSwapping ? <div style={{textAlign:'center'}}><div className="spinner" style={{borderLeftColor:'#10b981'}}></div><p style={{marginTop:'10px', color:'#888'}}>Đang xử lý...</p></div> : <div style={{textAlign:'center'}}><img src={swapResultImage} style={{maxWidth:'100%', borderRadius:'8px'}}/><div style={{marginTop:'15px', display:'flex', gap:'10px', justifyContent:'center'}}><a href={swapResultImage} download="swap-result.png" className="btn btn-primary" style={{textDecoration:'none', background:'#10b981'}}>💾 Tải về</a><button className="btn btn-secondary" onClick={()=>setSwapResultImage(null)}>🔄 Làm lại</button><button className="btn" style={{background:'#f59e0b', color:'white'}} onClick={()=>handleTransferToSkinFix(swapResultImage)}>✨ Fix da</button></div></div>}</section>)}
+                 </main>
+             )}
 
+            {/* --- FIX SKIN TAB --- */}
             {activeTab === 'fix-skin' && (
-                <div className="workflow-container">
-                    <button 
-                        className="btn btn-secondary" 
-                        onClick={() => setActiveTab('try-on')}
-                        style={{alignSelf: 'flex-start', marginBottom: '1rem'}}
-                    >
-                        ← Quay lại Try-On
-                    </button>
+                <main className="workflow-container">
+                    <button className="btn btn-secondary" onClick={() => setActiveTab('try-on')} style={{alignSelf: 'flex-start', marginBottom: '1rem'}}>← Quay lại Try-On</button>
                     <section className="step-card full-width">
                         <h2><span className="step-number">✨</span> Fix Da Nhựa (Skin Enhancer)</h2>
                         <div className="dual-upload-container" style={{alignItems: 'start'}}>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
-                                <ImageUploader
-                                    image={skinFixInputImage}
-                                    onImageSelect={(e) => handleLocalImageUpload(e, setSkinFixInputImage, setSkinFixResultImage)}
-                                    onRemove={() => { setSkinFixInputImage(null); setSkinFixResultImage(null); }}
-                                >
-                                    <p>Tải ảnh để fix da</p>
-                                </ImageUploader>
+                                <ImageUploader image={skinFixInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setSkinFixInputImage, setSkinFixResultImage)} onRemove={()=>{setSkinFixInputImage(null); setSkinFixResultImage(null)}}><p>Tải ảnh để fix da</p></ImageUploader>
                                 {skinFixInputImage && !isFixingSkin && !skinFixResultImage && (
-                                     <button 
-                                        className="btn btn-primary" 
-                                        style={{width: '100%', marginTop: '10px'}}
-                                        onClick={() => processSkinFix(skinFixInputImage)}
-                                     >
-                                        Bắt đầu Fix Da
-                                     </button>
+                                     <button className="btn btn-primary" style={{width: '100%', marginTop: '10px'}} onClick={() => processSkinFix(skinFixInputImage)}>Bắt đầu Fix Da</button>
                                 )}
                             </div>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
                                 {isFixingSkin ? (
-                                    <div style={{textAlign: 'center', padding: '40px'}}>
+                                    <div style={{textAlign: 'center', padding: '40px', background:'#252525', borderRadius:'10px'}}>
                                         <div className="spinner"></div>
                                         <p style={{marginTop: '15px', color: '#888'}}>Đang tái tạo bề mặt da...</p>
                                     </div>
@@ -1890,62 +1528,37 @@ const App = () => {
                                     <div>
                                         <img src={skinFixResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Fixed" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={skinFixResultImage} download={getDownloadFileName('fix-skin')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
-                                             <button 
-                                                className="btn" 
-                                                style={{ background: 'linear-gradient(to right, #c084fc, #e879f9)', color: 'black', border: 'none', fontWeight: 600 }}
-                                                onClick={() => handleTransferToBreastLift(skinFixResultImage)}
-                                            >
-                                                👙 AI Nâng Ngực
-                                            </button>
+                                            <a href={skinFixResultImage} download="skin-fix-result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                             <button className="btn" style={{ background: 'linear-gradient(to right, #c084fc, #e879f9)', color: 'black', border: 'none', fontWeight: 600 }} onClick={() => handleTransferToBreastLift(skinFixResultImage)}>👙 Nâng Ngực Tiếp</button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{padding: '40px', textAlign: 'center', color: '#666'}}>
-                                        Chưa có kết quả
-                                    </div>
+                                    <div style={{padding: '40px', textAlign: 'center', color: '#666', background:'#252525', borderRadius:'10px', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>Chưa có kết quả</div>
                                 )}
                             </div>
                         </div>
                     </section>
-                </div>
+                </main>
             )}
             
+            {/* --- BREAST LIFT TAB --- */}
             {activeTab === 'breast-lift' && (
-                <div className="workflow-container">
-                    <button 
-                        className="btn btn-secondary" 
-                        onClick={() => setActiveTab('try-on')}
-                        style={{alignSelf: 'flex-start', marginBottom: '1rem'}}
-                    >
-                        ← Quay lại Try-On
-                    </button>
+                <main className="workflow-container">
+                    <button className="btn btn-secondary" onClick={() => setActiveTab('try-on')} style={{alignSelf: 'flex-start', marginBottom: '1rem'}}>← Quay lại Try-On</button>
                     <section className="step-card full-width">
                          <h2><span className="step-number">👙</span> AI Nâng Ngực (Body Enhancer)</h2>
                          <div className="dual-upload-container" style={{alignItems: 'start'}}>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
-                                <ImageUploader
-                                    image={breastLiftInputImage}
-                                    onImageSelect={(e) => handleLocalImageUpload(e, setBreastLiftInputImage, setBreastLiftResultImage)}
-                                    onRemove={() => { setBreastLiftInputImage(null); setBreastLiftResultImage(null); }}
-                                >
-                                    <p>Tải ảnh để nâng ngực</p>
-                                </ImageUploader>
+                                <ImageUploader image={breastLiftInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setBreastLiftInputImage, setBreastLiftResultImage)} onRemove={()=>{setBreastLiftInputImage(null); setBreastLiftResultImage(null)}}><p>Tải ảnh để nâng ngực</p></ImageUploader>
                                 {breastLiftInputImage && !isLiftingBreast && !breastLiftResultImage && (
-                                     <button 
-                                        className="btn btn-primary" 
-                                        style={{width: '100%', marginTop: '10px'}}
-                                        onClick={() => processBreastLift(breastLiftInputImage)}
-                                     >
-                                        Bắt đầu Nâng Ngực
-                                     </button>
+                                     <button className="btn btn-primary" style={{width: '100%', marginTop: '10px'}} onClick={() => processBreastLift(breastLiftInputImage)}>Bắt đầu Nâng Ngực</button>
                                 )}
                             </div>
                             <div className="upload-box">
                                 <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
                                 {isLiftingBreast ? (
-                                    <div style={{textAlign: 'center', padding: '40px'}}>
+                                    <div style={{textAlign: 'center', padding: '40px', background:'#252525', borderRadius:'10px'}}>
                                         <div className="spinner"></div>
                                         <p style={{marginTop: '15px', color: '#888'}}>Đang chỉnh sửa hình thể...</p>
                                     </div>
@@ -1953,37 +1566,39 @@ const App = () => {
                                     <div>
                                         <img src={breastLiftResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Lifted" />
                                         <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={breastLiftResultImage} download={getDownloadFileName('breast-lift')} className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
-                                            <button 
-                                                className="btn btn-secondary" 
-                                                onClick={() => {
-                                                    if (breastLiftResultImage) {
-                                                        const newImage = breastLiftResultImage;
-                                                        setBreastLiftInputImage(newImage);
-                                                        setBreastLiftResultImage(null);
-                                                        processBreastLift(newImage);
-                                                    }
-                                                }}
-                                            >
-                                                🔄 Nâng tiếp
-                                            </button>
+                                            <a href={breastLiftResultImage} download="body-lift-result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
+                                            <button className="btn btn-secondary" onClick={() => {
+                                                    const newImage = breastLiftResultImage;
+                                                    setBreastLiftInputImage(newImage);
+                                                    setBreastLiftResultImage(null);
+                                                    processBreastLift(newImage);
+                                            }}>🔄 Nâng tiếp</button>
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{padding: '40px', textAlign: 'center', color: '#666'}}>
-                                        Chưa có kết quả
-                                    </div>
+                                    <div style={{padding: '40px', textAlign: 'center', color: '#666', background:'#252525', borderRadius:'10px', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>Chưa có kết quả</div>
                                 )}
                             </div>
                         </div>
                     </section>
-                </div>
+                </main>
             )}
 
+            {/* --- AI INFLUENCER TAB --- */}
             {activeTab === 'ai-influencer' && (
                 <div className="workflow-container">
+                    <div style={{display: 'flex', justifyContent: 'flex-end', marginBottom: '10px'}}>
+                         <button 
+                            className="btn" 
+                            style={{background: '#333', color: '#fff', fontSize: '0.9rem', padding: '8px 16px', border: '1px solid #444'}}
+                            onClick={randomizeInfluencer}
+                        >
+                            🎲 Ngẫu nhiên hóa (Random)
+                        </button>
+                    </div>
+
                     <section className="step-card full-width">
-                        <h2><span className="step-number">1</span> Thiết Kế Nhân Vật (Character)</h2>
+                        <h2><span className="step-number">1</span> Thiết Kế Nhân Vật</h2>
                         
                         <div className="influencer-form-group">
                             <div className="form-row">
@@ -1994,8 +1609,9 @@ const App = () => {
                                         value={influencerSettings.gender}
                                         onChange={(e) => handleInfluencerSettingChange('gender', e.target.value)}
                                     >
-                                        <option value="Female">Nữ (Female)</option>
-                                        <option value="Male">Nam (Male)</option>
+                                        {INFLUENCER_DATA.genders.map((opt, i) => (
+                                            <option key={i} value={opt.value}>{opt.label}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="form-item">
@@ -2005,10 +1621,9 @@ const App = () => {
                                         value={influencerSettings.age}
                                         onChange={(e) => handleInfluencerSettingChange('age', e.target.value)}
                                     >
-                                        <option value="Teenager (18-19)">Teen (18-19)</option>
-                                        <option value="20s (Young Adult)">20s (Trẻ)</option>
-                                        <option value="30s (Mature)">30s (Trưởng thành)</option>
-                                        <option value="40s (Middle Age)">40s (Trung niên)</option>
+                                        {INFLUENCER_DATA.ages.map((opt, i) => (
+                                            <option key={i} value={opt.value}>{opt.label}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="form-item">
@@ -2018,46 +1633,90 @@ const App = () => {
                                         value={influencerSettings.ethnicity}
                                         onChange={(e) => handleInfluencerSettingChange('ethnicity', e.target.value)}
                                     >
-                                        <option value="Asian (Vietnamese)">Châu Á (Việt Nam)</option>
-                                        <option value="Asian (Korean)">Châu Á (Hàn Quốc)</option>
-                                        <option value="Asian (Japanese)">Châu Á (Nhật Bản)</option>
-                                        <option value="Caucasian (Western)">Phương Tây (Trắng)</option>
-                                        <option value="Latina">Latina</option>
-                                        <option value="Mixed Race">Lai (Mixed)</option>
+                                        {INFLUENCER_DATA.ethnicities.map((opt, i) => (
+                                            <option key={i} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div className="form-row">
+                                <div className="form-item">
+                                    <label className="form-label">Dáng người</label>
+                                    <select 
+                                        className="form-select"
+                                        value={influencerSettings.bodyType}
+                                        onChange={(e) => handleInfluencerSettingChange('bodyType', e.target.value)}
+                                    >
+                                        {INFLUENCER_DATA.bodyTypes.map((opt, i) => (
+                                            <option key={i} value={opt.value}>{opt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-item">
+                                    <label className="form-label">Màu mắt</label>
+                                    <select 
+                                        className="form-select"
+                                        value={influencerSettings.eyes}
+                                        onChange={(e) => handleInfluencerSettingChange('eyes', e.target.value)}
+                                    >
+                                        {INFLUENCER_DATA.eyes.map((opt, i) => (
+                                            <option key={i} value={opt.value}>{opt.label}</option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
 
-                            <div className="form-row">
-                                <div className="form-item">
-                                    <label className="form-label">Kiểu tóc</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={influencerSettings.hair}
-                                        onChange={(e) => handleInfluencerSettingChange('hair', e.target.value)}
-                                        placeholder="Ví dụ: Long black straight hair..."
-                                    />
+                            {/* HAIR BUILDER SECTION */}
+                            <div style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px', border: '1px solid #333'}}>
+                                <label className="form-label" style={{color: '#f59e0b', marginBottom: '10px'}}>Thiết kế kiểu tóc</label>
+                                <div className="form-row" style={{marginBottom: '10px'}}>
+                                    <div className="form-item">
+                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.length} onChange={(e) => updateHairFromBuilder({length: e.target.value})}>
+                                            {INFLUENCER_DATA.hairOptions.lengths.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="form-item">
+                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.color} onChange={(e) => updateHairFromBuilder({color: e.target.value})}>
+                                            {INFLUENCER_DATA.hairOptions.colors.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="form-item">
+                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.texture} onChange={(e) => updateHairFromBuilder({texture: e.target.value})}>
+                                            {INFLUENCER_DATA.hairOptions.textures.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="form-item">
+                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.bangs} onChange={(e) => updateHairFromBuilder({bangs: e.target.value})}>
+                                            {INFLUENCER_DATA.hairOptions.bangs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
-                                <div className="form-item">
-                                    <label className="form-label">Màu mắt</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={influencerSettings.eyes}
-                                        onChange={(e) => handleInfluencerSettingChange('eyes', e.target.value)}
-                                        placeholder="Ví dụ: Brown, Blue, Hazel..."
-                                    />
-                                </div>
-                                <div className="form-item">
-                                    <label className="form-label">Dáng người</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={influencerSettings.bodyType}
-                                        onChange={(e) => handleInfluencerSettingChange('bodyType', e.target.value)}
-                                        placeholder="Ví dụ: Slim, Curvy, Athletic..."
-                                    />
+                                
+                                <div className="form-row">
+                                    <div className="form-item" style={{flex: 2}}>
+                                         <input 
+                                            type="text" 
+                                            className="form-input" 
+                                            value={influencerSettings.hair}
+                                            onChange={(e) => handleInfluencerSettingChange('hair', e.target.value)}
+                                            placeholder="Mô tả tóc chi tiết (tiếng Anh hoặc Việt)..."
+                                        />
+                                    </div>
+                                    <div className="form-item" style={{flex: 1}}>
+                                        <select 
+                                            className="form-select" 
+                                            onChange={(e) => {
+                                                if(e.target.value) handleInfluencerSettingChange('hair', e.target.value);
+                                            }}
+                                            value=""
+                                        >
+                                            <option value="" disabled>Chọn Mẫu Tóc...</option>
+                                            {INFLUENCER_DATA.hairOptions.presets.map((p, i) => (
+                                                <option key={i} value={p.value}>{p.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2067,22 +1726,41 @@ const App = () => {
                         <h2><span className="step-number">2</span> Phong Cách & Bối Cảnh</h2>
                         <div className="influencer-form-group">
                             <div className="form-item">
-                                <label className="form-label">Phong cách thời trang (Style)</label>
-                                <input 
-                                    type="text" 
-                                    className="form-input" 
+                                <label className="form-label">Phong cách thời trang</label>
+                                <select 
+                                    className="form-select"
                                     value={influencerSettings.style}
                                     onChange={(e) => handleInfluencerSettingChange('style', e.target.value)}
-                                    placeholder="Ví dụ: Luxury Streetwear, Business Casual, Bikini Beach..."
-                                />
+                                >
+                                    {INFLUENCER_DATA.styles.map((opt, i) => (
+                                        <option key={i} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
                             </div>
+                            
                             <div className="form-item">
-                                <label className="form-label">Bối cảnh / Hoạt động (Scenario)</label>
+                                <label className="form-label">Bối cảnh / Hoạt động</label>
+                                <div className="form-row" style={{marginBottom: '10px'}}>
+                                    <select 
+                                        className="form-select"
+                                        onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)}
+                                        value=""
+                                    >
+                                        <option value="" disabled>Chọn bối cảnh mẫu...</option>
+                                        {Object.entries(INFLUENCER_DATA.scenarios).map(([category, options]) => (
+                                            <optgroup key={category} label={category}>
+                                                {options.map((opt, i) => (
+                                                    <option key={i} value={opt.value}>{opt.label}</option>
+                                                ))}
+                                            </optgroup>
+                                        ))}
+                                    </select>
+                                </div>
                                 <textarea 
                                     className="form-textarea" 
                                     value={influencerSettings.scenario}
                                     onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)}
-                                    placeholder="Mô tả chi tiết bối cảnh. Ví dụ: Sitting in a high-end coffee shop in Paris, morning sunlight through window, holding a latte..."
+                                    placeholder="Hoặc tự mô tả chi tiết bối cảnh..."
                                 />
                             </div>
                             
@@ -2144,10 +1822,7 @@ const App = () => {
                                                     className="btn" 
                                                     style={{ background: '#3b82f6', color: 'white' }}
                                                     onClick={() => {
-                                                        // Auto switch to Try On and set this as model
                                                         setModelPreview(influencerResultImage);
-                                                        // Need to fetch blob to set File object, simplified for now just using preview
-                                                        // For full functionality, we'd convert base64 to File here
                                                         fetch(influencerResultImage)
                                                             .then(res => res.blob())
                                                             .then(blob => {
