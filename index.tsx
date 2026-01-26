@@ -146,6 +146,7 @@ const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: {
 };
 
 type Provider = 'gemini' | 'openai' | 'grok';
+type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive';
 
 const App = () => {
     // --- API MANAGEMENT STATE ---
@@ -173,6 +174,14 @@ const App = () => {
     const [error, setError] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [finalImage, setFinalImage] = useState<string | null>(null);
+
+    // Swap Face Mode State
+    const [swapTargetFile, setSwapTargetFile] = useState<File | null>(null);
+    const [swapTargetPreview, setSwapTargetPreview] = useState<string | null>(null);
+    const [swapSourceFile, setSwapSourceFile] = useState<File | null>(null);
+    const [swapSourcePreview, setSwapSourcePreview] = useState<string | null>(null);
+    const [swapResultImage, setSwapResultImage] = useState<string | null>(null);
+    const [isSwapping, setIsSwapping] = useState(false);
 
     // Skin Fix Mode State
     const [skinFixInputImage, setSkinFixInputImage] = useState<string | null>(null);
@@ -216,7 +225,8 @@ const App = () => {
         changePose: false,
         changeBackground: false,
         generateFullBody: false,
-        transparentBackground: false
+        transparentBackground: false,
+        expression: 'default' as Expression
     });
 
     // --- INITIALIZATION & API LOGIC ---
@@ -348,6 +358,18 @@ const App = () => {
         }
     };
 
+    const handleSwapImages = () => {
+        // Swap file objects
+        const tempFile = swapTargetFile;
+        setSwapTargetFile(swapSourceFile);
+        setSwapSourceFile(tempFile);
+
+        // Swap preview strings
+        const tempPreview = swapTargetPreview;
+        setSwapTargetPreview(swapSourcePreview);
+        setSwapSourcePreview(tempPreview);
+    };
+
     const handleReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             if (referenceFiles.length >= 3) {
@@ -388,6 +410,10 @@ const App = () => {
 
     const setAspectRatio = (ratio: string) => {
         setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
+    };
+
+    const setExpression = (expr: Expression) => {
+        setGenerationSettings(prev => ({ ...prev, expression: expr }));
     };
 
     const toggleGenerationSetting = (key: keyof typeof generationSettings) => {
@@ -448,6 +474,105 @@ const App = () => {
     };
 
     // --- GENERATION FUNCTIONS ---
+
+    const handleSwapFace = async () => {
+        if (!swapTargetFile || !swapSourceFile) return;
+        setIsSwapping(true);
+        setSwapResultImage(null);
+        setError(null);
+
+        try {
+            const parts: any[] = [];
+            const targetB64 = await fileToBase64(swapTargetFile);
+            const sourceB64 = await fileToBase64(swapSourceFile);
+
+            // STRATEGY CHANGE: Provide Source Identity FIRST to anchor the model on the face features.
+            parts.push({ text: "INPUT 1 [SOURCE IDENTITY]: This is the face/identity to generate. Focus on the facial structure, eyes, nose, and mouth." });
+            parts.push({
+                inlineData: { mimeType: swapSourceFile.type, data: sourceB64 }
+            });
+
+            parts.push({ text: "INPUT 2 [TARGET CONTEXT]: This is the body and background. The face in this image must be REPLACED." });
+            parts.push({
+                inlineData: { mimeType: swapTargetFile.type, data: targetB64 }
+            });
+
+            let textPrompt = "TASK: High-Fidelity Face Swap with Seamless Skin Tone Adaptation.\n";
+            textPrompt += "ACTION: Replace the face in INPUT 2 (Target Context) with the identity of INPUT 1 (Source Identity).\n\n";
+            textPrompt += "⚠️ CRITICAL RULES:\n";
+            textPrompt += "1. **IDENTITY**: The facial features (eyes, nose, mouth structure) MUST be 100% from INPUT 1.\n";
+            textPrompt += "2. **SKIN TONE UNIFICATION (HIGHEST PRIORITY)**: \n";
+            textPrompt += "   - The skin tone of the new face MUST be color-graded to match the neck, chest, and arms of the body in INPUT 2.\n";
+            textPrompt += "   - If the body in INPUT 2 is pale, the face MUST be pale. If tanned, the face MUST be tanned.\n";
+            textPrompt += "   - Match the lighting temperature, shadows, and grain of INPUT 2 exactly. No visible neck seam.\n";
+            textPrompt += "3. **CONTEXT**: Keep the body, clothes, pose, and background of INPUT 2 exactly as is.\n";
+
+             // EXPRESSION LOGIC
+            if (generationSettings.expression && generationSettings.expression !== 'default') {
+                const expr = generationSettings.expression;
+                textPrompt += `- **EXPRESSION**: The subject must have a '${expr.toUpperCase()}' expression.\n`;
+            }
+
+             // POSE LOGIC
+            if (generationSettings.changePose) {
+                textPrompt += "- **POSE**: IGNORE the specific pose of INPUT 2. Generate a NEW, dynamic fashion pose for the subject (INPUT 1 Identity in INPUT 2 Clothes).\n";
+            } else {
+                textPrompt += "- **POSE**: STRICTLY PRESERVE the original pose, head angle, and body language of INPUT 2.\n";
+            }
+            
+            // BACKGROUND LOGIC
+            if (generationSettings.transparentBackground) {
+                textPrompt += "- **BACKGROUND**: **SOLID WHITE**. Render on a flat white background for removal.\n";
+            } else if (generationSettings.changeBackground) {
+                textPrompt += "- **BACKGROUND**: Place the subject in a new high-end studio or luxury environment.\n";
+            } else {
+                textPrompt += "- **BACKGROUND**: Keep the original background of INPUT 2 exactly as is.\n";
+            }
+
+            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
+            textPrompt += "\nStyle: 8k resolution, Photorealistic, High Fidelity.";
+
+            parts.push({ text: textPrompt });
+
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const modelName = 'gemini-2.5-flash-image';
+                
+                const response = await ai.models.generateContent({
+                    model: modelName,
+                    contents: { parts: parts },
+                });
+
+                let finalUrl: string | null = null;
+                if (response.candidates?.[0]?.content?.parts) {
+                    for (const part of response.candidates[0].content.parts) {
+                        if (part.inlineData) {
+                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+                            break;
+                        }
+                    }
+                }
+
+                if (!finalUrl) {
+                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
+                        throw new Error("AI không trả về ảnh" + extraText); 
+                }
+                
+                if (generationSettings.transparentBackground) {
+                    finalUrl = await removeBackground(finalUrl);
+                }
+
+                setSwapResultImage(finalUrl);
+                return response;
+            });
+
+        } catch (err: any) {
+            console.error(err);
+            setError("Lỗi Swap Face: " + err.message);
+        } finally {
+            setIsSwapping(false);
+        }
+    };
 
     const handleGenerateTryOn = async () => {
         setIsGenerating(true);
@@ -788,6 +913,12 @@ const App = () => {
                         👗 Virtual Try-On
                     </button>
                     <button 
+                        className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('swap-face')}
+                    >
+                        🎭 Swap Face (Ghép Mặt)
+                    </button>
+                    <button 
                         className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`}
                         onClick={() => setActiveTab('fix-skin')}
                     >
@@ -834,9 +965,18 @@ const App = () => {
                                     <li><strong>Lưu ý:</strong> Ảnh mẫu nên rõ mặt và chụp chính diện để có kết quả tốt nhất.</li>
                                 </ul>
                             </div>
+                            
+                            <div className="guide-section">
+                                <h4>2. Swap Face (Ghép mặt)</h4>
+                                <ul>
+                                    <li><strong>Ảnh Gốc (Target):</strong> Chọn ảnh chứa cơ thể, trang phục và bối cảnh bạn muốn giữ lại.</li>
+                                    <li><strong>Ảnh Mặt (Source):</strong> Chọn ảnh chứa khuôn mặt người bạn muốn ghép vào.</li>
+                                    <li>AI sẽ tự động đồng bộ màu da và ánh sáng. Bạn có thể chọn đổi tư thế hoặc bối cảnh nếu muốn sáng tạo thêm.</li>
+                                </ul>
+                            </div>
 
                             <div className="guide-section">
-                                <h4>2. Fix Da Nhựa (Skin Enhancer)</h4>
+                                <h4>3. Fix Da Nhựa (Skin Enhancer)</h4>
                                 <ul>
                                     <li>Công cụ chuyên dụng để xử lý các ảnh AI bị lỗi da "bóng loáng" hoặc "giả trân".</li>
                                     <li>AI sẽ tái tạo lại lỗ chân lông, thêm hạt (grain) và điều chỉnh ánh sáng để da trông như chụp bằng máy ảnh thật.</li>
@@ -844,7 +984,7 @@ const App = () => {
                             </div>
 
                              <div className="guide-section">
-                                <h4>3. AI Nâng Ngực (Body Enhancer)</h4>
+                                <h4>4. AI Nâng Ngực (Body Enhancer)</h4>
                                 <ul>
                                     <li>Tự động nhận diện vùng ngực và điều chỉnh kích thước tự nhiên.</li>
                                     <li>AI tự động tính toán độ căng của vải và bóng đổ để đảm bảo tính vật lý chân thực.</li>
@@ -1378,6 +1518,194 @@ const App = () => {
                         )}
                     </main>
                 </>
+            )}
+
+            {/* --- SWAP FACE TAB --- */}
+            {activeTab === 'swap-face' && (
+                <main className="workflow-container">
+                    <section className="step-card full-width">
+                        <h2><span className="step-number">1</span> Dữ Liệu Swap Face</h2>
+                        
+                        <div className="dual-upload-container" style={{position: 'relative', alignItems: 'center'}}>
+                            {/* Nút Swap giữa 2 cột */}
+                            <button 
+                                className="swap-btn"
+                                onClick={handleSwapImages}
+                                title="Đổi vị trí ảnh"
+                            >
+                                ↔️
+                            </button>
+
+                            <div className="upload-box">
+                                <Tooltip text="Ảnh chứa cơ thể, trang phục và bối cảnh bạn muốn giữ lại.">
+                                    <ImageUploader
+                                        label="1. Ảnh Gốc (Body/Target)"
+                                        image={swapTargetPreview}
+                                        onImageSelect={(e) => handleFileChange(e, setSwapTargetFile, setSwapTargetPreview)}
+                                        onRemove={() => { setSwapTargetFile(null); setSwapTargetPreview(null); }}
+                                    >
+                                        <p>Tải ảnh gốc (giữ body)</p>
+                                    </ImageUploader>
+                                </Tooltip>
+                            </div>
+                            <div className="upload-box">
+                                <Tooltip text="Ảnh chứa khuôn mặt người bạn muốn ghép vào. Nên chọn ảnh rõ mặt, chính diện.">
+                                    <ImageUploader
+                                        label="2. Ảnh Khuôn Mặt (Source)"
+                                        image={swapSourcePreview}
+                                        onImageSelect={(e) => handleFileChange(e, setSwapSourceFile, setSwapSourcePreview)}
+                                        onRemove={() => { setSwapSourceFile(null); setSwapSourcePreview(null); }}
+                                    >
+                                        <p>Tải ảnh khuôn mặt</p>
+                                    </ImageUploader>
+                                </Tooltip>
+                            </div>
+                        </div>
+
+                         <div className="settings-panel">
+                            <div className="settings-card">
+                                <div className="settings-card-header">
+                                    <label>Cài đặt tạo ảnh:</label>
+                                </div>
+                                <div className="settings-card-body">
+                                    <div className="option-toggles-list">
+                                        <div className="aspect-ratio-selector">
+                                            <button 
+                                                className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
+                                                onClick={() => setAspectRatio('9:16')}
+                                            >
+                                                📱 Dọc (9:16)
+                                            </button>
+                                            <button 
+                                                className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
+                                                onClick={() => setAspectRatio('16:9')}
+                                            >
+                                                💻 Ngang (16:9)
+                                            </button>
+                                        </div>
+
+                                        <div className="settings-grid-2col">
+                                            <Tooltip text="AI sẽ giữ nguyên quần áo nhưng tạo dáng đứng hoàn toàn mới.">
+                                                <button 
+                                                    className={`option-btn ${generationSettings.changePose ? 'active' : ''}`}
+                                                    onClick={() => toggleGenerationSetting('changePose')}
+                                                >
+                                                    <span>💃 Đổi tư thế</span>
+                                                    {generationSettings.changePose && <span>✓</span>}
+                                                </button>
+                                            </Tooltip>
+                                            
+                                            <Tooltip text="Đặt nhân vật vào bối cảnh studio hoặc sang trọng hơn.">
+                                                <button 
+                                                    className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`}
+                                                    onClick={() => toggleGenerationSetting('changeBackground')}
+                                                    disabled={generationSettings.transparentBackground}
+                                                >
+                                                    <span>🏞️ Đổi nền</span>
+                                                    {generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}
+                                                </button>
+                                            </Tooltip>
+
+                                            <Tooltip text="Tách nền, tạo ra ảnh PNG trong suốt.">
+                                                <button 
+                                                    className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`}
+                                                    onClick={() => toggleGenerationSetting('transparentBackground')}
+                                                >
+                                                    <span>🔳 Nền rỗng</span>
+                                                    {generationSettings.transparentBackground && <span>✓</span>}
+                                                </button>
+                                            </Tooltip>
+                                        </div>
+
+                                        <div className="settings-card-header" style={{marginTop: '15px'}}>
+                                            <label>Biểu cảm khuôn mặt:</label>
+                                        </div>
+                                        <div className="aspect-ratio-selector" style={{flexWrap: 'wrap'}}>
+                                             <button 
+                                                className={`option-btn ${generationSettings.expression === 'default' ? 'active' : ''}`}
+                                                onClick={() => setExpression('default')}
+                                                style={{flex: 1, minWidth: '80px'}}
+                                            >
+                                                😐 Gốc
+                                            </button>
+                                            <button 
+                                                className={`option-btn ${generationSettings.expression === 'happy' ? 'active' : ''}`}
+                                                onClick={() => setExpression('happy')}
+                                                style={{flex: 1, minWidth: '80px'}}
+                                            >
+                                                😄 Vui
+                                            </button>
+                                            <button 
+                                                className={`option-btn ${generationSettings.expression === 'serious' ? 'active' : ''}`}
+                                                onClick={() => setExpression('serious')}
+                                                style={{flex: 1, minWidth: '80px'}}
+                                            >
+                                                😎 Ngầu
+                                            </button>
+                                            <button 
+                                                className={`option-btn ${generationSettings.expression === 'surprised' ? 'active' : ''}`}
+                                                onClick={() => setExpression('surprised')}
+                                                style={{flex: 1, minWidth: '80px'}}
+                                            >
+                                                😮 Wow
+                                            </button>
+                                             <button 
+                                                className={`option-btn ${generationSettings.expression === 'seductive' ? 'active' : ''}`}
+                                                onClick={() => setExpression('seductive')}
+                                                style={{flex: 1, minWidth: '80px'}}
+                                            >
+                                                😏 Cuốn
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="step-card full-width">
+                         <h2><span className="step-number">2</span> Thực Hiện</h2>
+                         <button 
+                            className="btn btn-primary start-btn" 
+                            style={{background: 'linear-gradient(135deg, #10b981, #059669)'}}
+                            onClick={handleSwapFace} 
+                            disabled={isSwapping || !swapTargetFile || !swapSourceFile}
+                        >
+                            🎭 {isSwapping ? 'Đang xử lý...' : 'Bắt đầu Swap Face'}
+                        </button>
+                    </section>
+
+                    {(swapResultImage || isSwapping) && (
+                        <section className="step-card full-width">
+                            <h2><span className="step-number">✨</span> Kết Quả</h2>
+                            <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                                {isSwapping ? (
+                                    <div style={{textAlign: 'center'}}>
+                                        <div className="spinner" style={{borderLeftColor: '#10b981'}}></div>
+                                        <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang ghép mặt & xử lý ánh sáng...</p>
+                                    </div>
+                                ) : (
+                                    swapResultImage && (
+                                        <div style={{ width: '100%', textAlign: 'center' }}>
+                                            <img src={swapResultImage} alt="Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px' }} />
+                                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                                                <a href={swapResultImage} download={getDownloadFileName('swap-face')} className="btn btn-primary" style={{textDecoration: 'none', background: '#10b981'}}>💾 Tải về</a>
+                                                <button className="btn btn-secondary" onClick={() => setSwapResultImage(null)}>🔄 Làm lại</button>
+                                                <button 
+                                                    className="btn" 
+                                                    style={{ background: '#f59e0b', color: 'white' }}
+                                                    onClick={() => handleTransferToSkinFix(swapResultImage)}
+                                                >
+                                                    ✨ Fix da nhựa
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        </section>
+                    )}
+                </main>
             )}
 
             {activeTab === 'fix-skin' && (

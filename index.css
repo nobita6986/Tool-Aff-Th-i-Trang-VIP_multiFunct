@@ -93,6 +93,15 @@ body {
     box-shadow: 0 0 15px rgba(236, 72, 153, 0.4);
 }
 
+/* Swap Face - Emerald/Green */
+.nav-item.nav-swap-face:hover,
+.nav-item.nav-swap-face.active {
+    background: #10b981; /* Emerald */
+    color: white;
+    border-color: #10b981;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+}
+
 /* --- Settings & Guide Button --- */
 .header-actions {
     display: flex;
@@ -204,6 +213,34 @@ body {
 }
 .btn-secondary:hover {
     background: #3d3d3d;
+}
+
+/* Swap Button */
+.swap-btn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #444;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    cursor: pointer;
+    background: #2d2d2d;
+    color: #fff;
+    font-size: 1.2rem;
+    transition: all 0.2s;
+}
+.swap-btn:hover {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    transform: translate(-50%, -50%) scale(1.1);
 }
 
 /* Workflow Layout */
