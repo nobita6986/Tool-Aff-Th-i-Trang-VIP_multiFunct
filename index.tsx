@@ -245,10 +245,11 @@ type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive';
 
 // --- RECOMMENDED MODELS ---
 const RECOMMENDED_MODELS = [
-    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Mặc định - Chuẩn)' },
-    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp (Khuyên dùng nếu lỗi)' },
-    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
-    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' }
+    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Preview/VIP)' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Stable - Khuyên dùng)' },
+    { value: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro Exp (Mạnh mẽ)' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
 ];
 
 const App = () => {
@@ -742,7 +743,7 @@ const App = () => {
                                     </div>
                                     
                                     <div style={{fontSize:'0.8rem', color:'#666', marginTop:'5px'}}>
-                                        *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.0 Flash Exp</strong>.
+                                        *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.0 Flash</strong>.
                                     </div>
                                 </div>
                                 <div className="api-input-group"><textarea value={tempKeyInput} onChange={(e) => setTempKeyInput(e.target.value)} placeholder={`Dán danh sách Key ${modalSelectedProvider}...`} className="api-textarea" rows={3}/><button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button></div>
