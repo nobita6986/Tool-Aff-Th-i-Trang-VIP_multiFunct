@@ -121,6 +121,60 @@ const INFLUENCER_DATA = {
     }
 };
 
+const BACKGROUND_PRESETS = [
+    { label: 'Cửa hàng thời trang cao cấp', value: 'A high-end luxury clothing store with warm lighting, shelves of clothes in the background, elegant interior design.' },
+    { label: 'Quán cà phê ấm cúng', value: 'A cozy coffee shop with wooden furniture, warm ambient light, blurred customers in the background, peaceful atmosphere.' },
+    { label: 'Bãi biển nắng vàng', value: 'A beautiful sunny beach with blue ocean water, white sand, bright natural sunlight, summer vibe.' },
+    { label: 'Văn phòng hiện đại', value: 'A modern corporate office with glass walls, city view from the window, professional environment.' },
+    { label: 'Đường phố đô thị', value: 'A busy urban street with city buildings, blurred traffic, daytime, street fashion vibe.' },
+    { label: 'Studio tối giản (Xám)', value: 'A professional photo studio with a plain grey seamless background, soft studio lighting.' },
+    { label: 'Tháp Eiffel (Paris)', value: 'Outdoor scene in Paris with the Eiffel Tower in the distance, romantic atmosphere, soft daylight.' },
+    { label: 'Tokyo đêm đèn Neon', value: 'Tokyo street at night with bright neon signs, cyberpunk vibe, colorful lighting.' },
+    { label: 'Công viên xanh mát', value: 'A green park with trees, flowers, soft sunlight filtering through leaves, nature background.' },
+    { label: 'Sảnh khách sạn 5 sao', value: 'A 5-star hotel lobby with marble floors, chandeliers, expensive furniture, golden lighting.' },
+    { label: 'Phòng Gym / Thể hình', value: 'A modern gym with workout equipment in the background, energetic atmosphere.' },
+    { label: 'Thư viện / Nhà sách', value: 'A quiet library with rows of bookshelves, academic atmosphere, soft indoor lighting.' },
+    { label: 'Quán Bar sân thượng', value: 'A rooftop bar at sunset with a cocktail in hand, city skyline view, chill vibe.' },
+    { label: 'Nền Gradient trừu tượng', value: 'A soft abstract gradient background with pastel colors, modern and clean.' },
+    { label: 'Căn phòng cổ điển (Vintage)', value: 'A vintage style room with retro furniture, warm colors, nostalgic mood.' },
+    { label: 'Núi tuyết hùng vĩ', value: 'A winter landscape with snow-covered mountains, cold refreshing air, bright white daylight.' },
+    { label: 'Cánh đồng hoa', value: 'A vast field of blooming flowers, bright colors, spring season vibe.' },
+    { label: 'Tường gạch trắng', value: 'A simple white brick wall background, urban grunge but clean texture.' },
+    { label: 'Nội thất xe sang', value: 'Sitting inside a luxury car with leather seats, dashboard visible.' },
+    { label: 'Sự kiện thảm đỏ', value: 'A red carpet event with paparazzi flashlights in the background, glamorous night.' },
+    // --- NEW PRESETS ---
+    { label: 'Du thuyền sang trọng', value: 'On the deck of a luxury yacht cruising on the open sea, blue sky, white railing, expensive lifestyle.' },
+    { label: 'Hồ bơi biệt thự', value: 'Poolside at a modern luxury villa, crystal clear blue water, lounge chairs, sunny day.' },
+    { label: 'Sân bay quốc tế', value: 'Inside a modern international airport terminal, large glass windows with airplanes visible outside, traveler vibe.' },
+    { label: 'Máy bay tư nhân', value: 'Interior of a luxury private jet, leather seats, champagne glass, view of clouds through the window.' },
+    { label: 'Rừng nhiệt đới', value: 'Lush green tropical rainforest, ferns, sunlight filtering through canopy, nature exploration.' },
+    { label: 'Sa mạc hoàng hôn', value: 'Vast sand dunes in the desert during sunset, golden and orange sky, dramatic shadows.' },
+    { label: 'Thành phố tương lai', value: 'Futuristic sci-fi city with flying cars, holograms, tall skyscrapers, blue and purple neon lights.' },
+    { label: 'Sân Golf', value: 'Green manicured golf course with sand traps, sunny day, country club atmosphere.' },
+    { label: 'Sân Tennis', value: 'Professional hard court tennis court, bright blue surface, net in background, sporty vibe.' },
+    { label: 'Phòng tranh nghệ thuật', value: 'Contemporary art gallery with white walls, abstract paintings, soft spotlighting.' },
+    { label: 'Đường phố New York', value: 'Busy New York City street with yellow taxis, tall skyscrapers, Times Square billboards.' },
+    { label: 'Santorini (Hy Lạp)', value: 'White buildings with blue domes in Santorini, Greece, overlooking the Aegean Sea, bright sunlight.' },
+    { label: 'Cánh đồng lúa chín', value: 'Golden rice paddy fields ready for harvest, peaceful countryside scenery.' },
+    { label: 'Phố cổ Hội An', value: 'Ancient street in Hoi An with yellow walls, colorful lanterns glowing at night, traditional vibe.' },
+    { label: 'Cầu Vàng (Đà Nẵng)', value: 'The Golden Bridge in Da Nang held by giant stone hands, misty mountains in the background.' },
+    { label: 'Mùa thu Hàn Quốc', value: 'Street lined with yellow ginkgo trees in autumn, fallen leaves on the ground, romantic atmosphere.' },
+    { label: 'Hoa anh đào Nhật Bản', value: 'Park filled with blooming pink cherry blossom trees, petals falling, spring season.' },
+    { label: 'Thảo nguyên xanh', value: 'Endless green grass steppe under a blue sky with fluffy white clouds, freedom vibe.' },
+    { label: 'Nhà thờ Gothic', value: 'In front of a majestic ancient Gothic cathedral with intricate stone carvings, dramatic lighting.' },
+    { label: 'Cầu thang xoắn ốc', value: 'Artistic shot on a grand spiral staircase, elegant architecture, high angle view.' },
+    { label: 'Phòng ngủ ấm cúng', value: 'A cozy bedroom with unmade bed, soft morning light, white sheets, lazy sunday vibe.' },
+    { label: 'Bếp hiện đại', value: 'A clean modern kitchen with marble countertops, stainless steel appliances, bright lighting.' },
+    { label: 'Siêu thị', value: 'Aisle of a well-stocked supermarket with colorful products on shelves, everyday lifestyle.' },
+    { label: 'Tiệm hoa', value: 'Inside a flower shop surrounded by buckets of colorful fresh flowers, rustic and charming.' },
+    { label: 'Sân khấu ca nhạc', value: 'On a concert stage with spotlights beaming down, smoke effects, rockstar atmosphere.' },
+    { label: 'Bến cảng', value: 'A harbor dock with fishing boats or sailboats, wooden pier, calm water.' },
+    { label: 'Khu cắm trại', value: 'Camping site in the woods with a tent, campfire, string lights, cozy evening.' },
+    { label: 'Đường hầm ánh sáng', value: 'A tunnel illuminated with LED lights, creating a leading line, artistic and modern.' },
+    { label: 'Vũ trụ / Phi thuyền', value: 'Inside a sci-fi spaceship corridor or looking out into the galaxy with stars and planets.' },
+    { label: 'Dưới nước', value: 'Underwater concept with blue water, bubbles, light rays from surface, ethereal dreamlike quality.' }
+];
+
 // --- UTILS ---
 const removeBackground = async (imageSrc: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -241,7 +295,18 @@ const handleDownload = (url: string, prefix: string) => {
 };
 
 type Provider = 'gemini' | 'openai' | 'grok';
-type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive';
+type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive' | 'angry' | 'sad' | 'pout';
+
+const EXPRESSION_OPTIONS: { id: Expression; label: string; icon: string }[] = [
+    { id: 'default', label: 'Gốc', icon: '😐' },
+    { id: 'happy', label: 'Vui', icon: '😄' },
+    { id: 'serious', label: 'Ngầu', icon: '😎' },
+    { id: 'surprised', label: 'Wow', icon: '😮' },
+    { id: 'seductive', label: 'Cuốn', icon: '😏' },
+    { id: 'angry', label: 'Giận', icon: '😠' },
+    { id: 'sad', label: 'Buồn', icon: '😢' },
+    { id: 'pout', label: 'Dỗi', icon: '🥺' },
+];
 
 // --- RECOMMENDED MODELS ---
 const RECOMMENDED_MODELS = [
@@ -294,6 +359,16 @@ const App = () => {
     const [breastLiftInputImage, setBreastLiftInputImage] = useState<string | null>(null);
     const [breastLiftResultImage, setBreastLiftResultImage] = useState<string | null>(null);
     const [isLiftingBreast, setIsLiftingBreast] = useState(false);
+
+    // Change Background Mode State
+    const [bgSourceFile, setBgSourceFile] = useState<File | null>(null);
+    const [bgSourcePreview, setBgSourcePreview] = useState<string | null>(null);
+    const [bgCustomFile, setBgCustomFile] = useState<File | null>(null);
+    const [bgCustomPreview, setBgCustomPreview] = useState<string | null>(null);
+    const [bgSelectedPreset, setBgSelectedPreset] = useState<string>('');
+    const [bgResultImage, setBgResultImage] = useState<string | null>(null);
+    const [isChangingBg, setIsChangingBg] = useState(false);
+
 
     // AI Influencer Mode State (Unchanged functionality)
     const [influencerSettings, setInfluencerSettings] = useState({
@@ -488,6 +563,20 @@ const App = () => {
         }
     };
 
+    const handleMixFileChange = (e: React.ChangeEvent<HTMLInputElement>, category: string) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            setMixFiles(prev => ({ ...prev, [category]: file }));
+            const url = URL.createObjectURL(file);
+            if(category === 'dress') setDressImage(url);
+            if(category === 'top') setTopImage(url);
+            if(category === 'bottom') setBottomImage(url);
+            if(category === 'shoes') setShoesImage(url);
+            if(category === 'jewelry') setJewelryImage(url);
+            if(category === 'bag') setBagImage(url);
+        }
+    };
+
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -636,6 +725,51 @@ const App = () => {
         } catch (err: any) { setError("Lỗi tạo ảnh: " + err.message); } finally { setIsGenerating(false); }
     };
 
+    const handleChangeBackground = async () => {
+        if (!bgSourceFile) return;
+        setIsChangingBg(true); setBgResultImage(null); setError(null);
+        try {
+            const parts: any[] = [];
+            const sourceB64 = await fileToBase64(bgSourceFile);
+            parts.push({ text: "SUBJECT IMAGE (Keep person/object identity):" });
+            parts.push({ inlineData: { mimeType: bgSourceFile.type, data: sourceB64 } });
+
+            // Construct prompt based on settings
+            let prompt = "TASK: Change Background/Environment.";
+            
+            if (bgCustomFile) {
+                const bgB64 = await fileToBase64(bgCustomFile);
+                parts.push({ text: "NEW BACKGROUND IMAGE:" });
+                parts.push({ inlineData: { mimeType: bgCustomFile.type, data: bgB64 } });
+                prompt += " Composite the subject into the provided background image.";
+            } else {
+                 let bgDesc = bgSelectedPreset || "Random realistic background";
+                if (bgSelectedPreset === 'random') {
+                    const randomPreset = BACKGROUND_PRESETS[Math.floor(Math.random() * BACKGROUND_PRESETS.length)];
+                    bgDesc = randomPreset.value;
+                }
+                prompt += ` Place the subject into this setting: ${bgDesc}.`;
+            }
+
+            // Add new options to prompt
+            prompt += `\n- Aspect Ratio: ${generationSettings.aspectRatio}.`;
+            prompt += `\n- Pose: ${generationSettings.changePose ? 'Change pose to fit environment naturaly' : 'Keep original pose'}.`;
+            prompt += `\n- Expression: ${generationSettings.expression}.`;
+            prompt += "\nEnsure realistic lighting, shadows, and high quality photorealism.";
+
+            parts.push({ text: prompt });
+
+            await executeWithRotation(async (key) => {
+                const ai = new GoogleGenAI({ apiKey: key });
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh");
+                setBgResultImage(finalUrl);
+                return response;
+            });
+        } catch (err: any) { setError("Lỗi đổi nền: " + err.message); } finally { setIsChangingBg(false); }
+    };
+
     const processSkinFix = async (imageSrc: string) => {
         setIsFixingSkin(true); setError(null); setSkinFixResultImage(null);
         try {
@@ -689,6 +823,7 @@ const App = () => {
                 <nav className="main-nav">
                     <button className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`} onClick={() => setActiveTab('try-on')}>👗 Virtual Try-On</button>
                     <button className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`} onClick={() => setActiveTab('swap-face')}>🎭 Swap Face (Ghép Mặt)</button>
+                    <button className={`nav-item ${activeTab === 'change-bg' ? 'active' : ''}`} style={{borderColor: '#f59e0b', color: activeTab === 'change-bg' ? '#fff' : '#f59e0b', background: activeTab === 'change-bg' ? '#f59e0b' : 'transparent'}} onClick={() => setActiveTab('change-bg')}>🌄 Đổi Bối Cảnh</button>
                     <button className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`} onClick={() => setActiveTab('fix-skin')}>✨ Fix Da Nhựa</button>
                     <button className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`} onClick={() => setActiveTab('breast-lift')}>👙 AI Nâng Ngực</button>
                     <button className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`} onClick={() => setActiveTab('ai-influencer')}>🌟 Create AI Influencer</button>
@@ -761,9 +896,9 @@ const App = () => {
              {/* ================= VIRTUAL TRY-ON TAB ================= */}
              {activeTab === 'try-on' && (
                  <main className="workflow-container">
-                    <div className="mode-switcher-container">
-                         <button className={`nav-item nav-try-on ${tryOnMode === 'full' ? 'active' : ''}`} style={{borderRadius:'8px'}} onClick={() => setTryOnMode('full')}>✨ Full Set (Nguyên Bộ)</button>
-                         <button className={`nav-item nav-influencer ${tryOnMode === 'mix' ? 'active' : ''}`} style={{borderRadius:'8px'}} onClick={() => setTryOnMode('mix')}>🧩 Mix & Match (Lẻ)</button>
+                    <div className="mode-switcher-container" style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                         <button className={`nav-item nav-try-on ${tryOnMode === 'full' ? 'active' : ''}`} style={{borderRadius:'8px', margin: '0 10px'}} onClick={() => setTryOnMode('full')}>✨ Full Set (Nguyên Bộ)</button>
+                         <button className={`nav-item nav-influencer ${tryOnMode === 'mix' ? 'active' : ''}`} style={{borderRadius:'8px', margin: '0 10px'}} onClick={() => setTryOnMode('mix')}>🧩 Mix & Match (Lẻ)</button>
                     </div>
 
                     <div className="vip-card">
@@ -775,26 +910,39 @@ const App = () => {
                         <div className="vip-grid-container">
                             {/* LEFT COL: Outfit */}
                             <div>
-                                <ImageUploader label="1. Ảnh Set Đồ (Chính)" image={fullOutfitPreview} onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)} onRemove={() => {setFullOutfitFile(null); setFullOutfitPreview(null)}}><p style={{color:'#666'}}>Tải ảnh chứa nguyên set đồ</p></ImageUploader>
-                                <div className="vip-ref-area">
-                                    <div className="vip-ref-header">
-                                        <span>Ảnh tham khảo (Tùy chọn)</span>
-                                        <span>{referenceFiles.length}/3</span>
-                                    </div>
-                                    <div className="vip-ref-grid">
-                                        <div className="vip-ref-slot" onClick={() => document.getElementById('ref-upload')?.click()}>
-                                            +
-                                        </div>
-                                        {referencePreviews.map((src, i) => (
-                                            <div key={i} className="vip-ref-slot">
-                                                <img src={src} />
-                                                <button className="vip-ref-remove" onClick={(e) => {e.stopPropagation(); removeReferenceImage(i);}}>×</button>
+                                {tryOnMode === 'full' ? (
+                                    <>
+                                        <ImageUploader label="1. Ảnh Set Đồ (Chính)" image={fullOutfitPreview} onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)} onRemove={() => {setFullOutfitFile(null); setFullOutfitPreview(null)}}><p style={{color:'#666'}}>Tải ảnh chứa nguyên set đồ</p></ImageUploader>
+                                        <div className="vip-ref-area">
+                                            <div className="vip-ref-header">
+                                                <span>Ảnh tham khảo (Tùy chọn)</span>
+                                                <span>{referenceFiles.length}/3</span>
                                             </div>
-                                        ))}
-                                        <input id="ref-upload" type="file" accept="image/*" onChange={handleReferenceUpload} className="hidden-input" />
+                                            <div className="vip-ref-grid">
+                                                <div className="vip-ref-slot" onClick={() => document.getElementById('ref-upload')?.click()}>
+                                                    +
+                                                </div>
+                                                {referencePreviews.map((src, i) => (
+                                                    <div key={i} className="vip-ref-slot">
+                                                        <img src={src} />
+                                                        <button className="vip-ref-remove" onClick={(e) => {e.stopPropagation(); removeReferenceImage(i);}}>×</button>
+                                                    </div>
+                                                ))}
+                                                <input id="ref-upload" type="file" accept="image/*" onChange={handleReferenceUpload} className="hidden-input" />
+                                            </div>
+                                            <div style={{fontSize:'0.7rem', color:'#555', marginTop:'8px'}}>*Upload thêm góc nhìn khác để AI hiểu rõ hơn.</div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>
+                                         <ImageUploader label="Váy (Dress)" image={dressImage} onImageSelect={(e) => handleMixFileChange(e, 'dress')} onRemove={() => { setDressImage(null); setMixFiles(p => ({...p, dress: null}))}} />
+                                         <ImageUploader label="Áo (Top)" image={topImage} onImageSelect={(e) => handleMixFileChange(e, 'top')} onRemove={() => { setTopImage(null); setMixFiles(p => ({...p, top: null}))}} />
+                                         <ImageUploader label="Quần (Bottom)" image={bottomImage} onImageSelect={(e) => handleMixFileChange(e, 'bottom')} onRemove={() => { setBottomImage(null); setMixFiles(p => ({...p, bottom: null}))}} />
+                                         <ImageUploader label="Giày (Shoes)" image={shoesImage} onImageSelect={(e) => handleMixFileChange(e, 'shoes')} onRemove={() => { setShoesImage(null); setMixFiles(p => ({...p, shoes: null}))}} />
+                                         <ImageUploader label="Túi (Bag)" image={bagImage} onImageSelect={(e) => handleMixFileChange(e, 'bag')} onRemove={() => { setBagImage(null); setMixFiles(p => ({...p, bag: null}))}} />
+                                         <ImageUploader label="Phụ kiện" image={jewelryImage} onImageSelect={(e) => handleMixFileChange(e, 'jewelry')} onRemove={() => { setJewelryImage(null); setMixFiles(p => ({...p, jewelry: null}))}} />
                                     </div>
-                                    <div style={{fontSize:'0.7rem', color:'#555', marginTop:'8px'}}>*Upload thêm góc nhìn khác để AI hiểu rõ hơn.</div>
-                                </div>
+                                )}
                             </div>
                             
                             {/* RIGHT COL: Model */}
@@ -926,18 +1074,14 @@ const App = () => {
                                  <div>
                                      <label className="vip-upload-label">Biểu cảm khuôn mặt:</label>
                                       <div className="vip-expression-bar" style={{flexWrap: 'wrap'}}>
-                                         {['default', 'happy', 'serious', 'surprised', 'seductive'].map((exp) => (
+                                         {EXPRESSION_OPTIONS.map((opt) => (
                                              <button 
-                                                key={exp}
-                                                className={`vip-expr-btn ${generationSettings.expression === exp ? 'active' : ''}`}
-                                                onClick={() => setExpression(exp as Expression)}
-                                                style={{minWidth: '60px'}}
+                                                key={opt.id}
+                                                className={`vip-expr-btn ${generationSettings.expression === opt.id ? 'active' : ''}`}
+                                                onClick={() => setExpression(opt.id)}
+                                                style={{minWidth: '70px', padding: '8px 12px', fontSize:'0.85rem'}}
                                              >
-                                                 {exp === 'default' && '😐 Gốc'}
-                                                 {exp === 'happy' && '😄 Vui'}
-                                                 {exp === 'serious' && '😎 Ngầu'}
-                                                 {exp === 'surprised' && '😮 Wow'}
-                                                 {exp === 'seductive' && '😏 Cuốn'}
+                                                 {opt.icon} {opt.label}
                                              </button>
                                          ))}
                                      </div>
@@ -975,6 +1119,135 @@ const App = () => {
                         </div>
                      )}
                  </main>
+             )}
+
+             {/* ================= CHANGE BACKGROUND TAB ================= */}
+             {activeTab === 'change-bg' && (
+                <main className="workflow-container">
+                    <div className="vip-card">
+                        <div className="vip-card-header">
+                            <div className="vip-step-badge">1</div>
+                            <h3 className="vip-card-title">Dữ Liệu & Bối Cảnh</h3>
+                        </div>
+
+                        <div className="vip-grid-container">
+                            {/* Input Source */}
+                            <div>
+                                <ImageUploader label="1. Ảnh Gốc (Người/Vật thể)" image={bgSourcePreview} onImageSelect={(e) => handleFileChange(e, setBgSourceFile, setBgSourcePreview)} onRemove={() => { setBgSourceFile(null); setBgSourcePreview(null); }}>
+                                    <p style={{color:'#666'}}>Tải ảnh người hoặc sản phẩm</p>
+                                </ImageUploader>
+                            </div>
+
+                            {/* Background Selection */}
+                            <div>
+                                <label className="vip-upload-label">2. Chọn Bối Cảnh Mới:</label>
+                                <div style={{background: '#1a1a1a', padding: '15px', borderRadius: '12px'}}>
+                                    
+                                    {/* Option A: Upload Custom */}
+                                    <div style={{marginBottom: '20px'}}>
+                                        <div style={{fontSize: '0.9rem', color: '#fff', marginBottom: '8px', fontWeight: 'bold'}}>🅰️ Tải ảnh nền (Custom)</div>
+                                        <ImageUploader image={bgCustomPreview} onImageSelect={(e) => {
+                                            handleFileChange(e, setBgCustomFile, setBgCustomPreview);
+                                            setBgSelectedPreset(''); // Clear preset if custom uploaded
+                                        }} onRemove={() => { setBgCustomFile(null); setBgCustomPreview(null); }}>
+                                            <p style={{color:'#666', fontSize:'0.8rem'}}>Upload ảnh nền của bạn</p>
+                                        </ImageUploader>
+                                    </div>
+
+                                    <div style={{textAlign: 'center', color: '#666', margin: '10px 0'}}>— HOẶC —</div>
+
+                                    {/* Option B: Preset */}
+                                    <div>
+                                        <div style={{fontSize: '0.9rem', color: '#fff', marginBottom: '8px', fontWeight: 'bold'}}>🅱️ Chọn bối cảnh có sẵn</div>
+                                        <select 
+                                            className="vip-select" 
+                                            value={bgSelectedPreset} 
+                                            onChange={(e) => {
+                                                setBgSelectedPreset(e.target.value);
+                                                setBgCustomFile(null); setBgCustomPreview(null); // Clear custom if preset selected
+                                            }}
+                                            disabled={!!bgCustomFile}
+                                        >
+                                            <option value="">-- Chọn Bối Cảnh --</option>
+                                            <option value="random">🎲 Ngẫu Nhiên (Random)</option>
+                                            {BACKGROUND_PRESETS.map((bg, i) => (
+                                                <option key={i} value={bg.value}>{bg.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Settings Section */}
+                        <div style={{marginTop: '20px', padding: '15px', background: '#1a1a1a', borderRadius: '12px'}}>
+                            <label className="vip-upload-label">3. Cấu hình nâng cao:</label>
+                            <div className="vip-grid-container" style={{marginBottom: 0, gap: '20px'}}>
+                                <div>
+                                    <label className="vip-label" style={{fontSize: '0.8rem'}}>Tỉ lệ & Tư thế:</label>
+                                    <div className="vip-toggle-row">
+                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
+                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
+                                    </div>
+                                    <div className="vip-toggle-row">
+                                        <button className={`vip-toggle-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}>💃 Đổi tư thế {generationSettings.changePose && '✓'}</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="vip-label" style={{fontSize: '0.8rem'}}>Biểu cảm:</label>
+                                    <div className="vip-expression-bar" style={{flexWrap: 'wrap'}}>
+                                        {EXPRESSION_OPTIONS.map((opt) => (
+                                             <button 
+                                                key={opt.id}
+                                                className={`vip-expr-btn ${generationSettings.expression === opt.id ? 'active' : ''}`}
+                                                onClick={() => setExpression(opt.id)}
+                                                style={{minWidth: '70px', padding: '8px 12px', fontSize:'0.85rem'}}
+                                             >
+                                                 {opt.icon} {opt.label}
+                                             </button>
+                                         ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="vip-footer-card">
+                         <div className="vip-card-header">
+                            <div className="vip-step-badge">2</div>
+                            <h3 className="vip-card-title">Thực Hiện</h3>
+                        </div>
+                        <div className="vip-status-box">
+                             <span className="vip-status-line">Ảnh gốc: {bgSourceFile ? <span className="vip-status-ok">✔ Đã có</span> : <span className="vip-status-err">✘ Thiếu</span>}</span>
+                             <span className="vip-status-line">Bối cảnh: {bgCustomFile ? <span className="vip-status-ok">✔ Ảnh Custom</span> : (bgSelectedPreset ? <span className="vip-status-ok">✔ Preset: {bgSelectedPreset === 'random' ? 'Ngẫu nhiên' : 'Đã chọn'}</span> : <span className="vip-status-err">✘ Chưa chọn</span>)}</span>
+                        </div>
+                        <div className="vip-tags">
+                            <span className={`vip-tag ${generationSettings.changePose ? 'active' : ''}`}>✔ Tư thế mới</span>
+                            <span className="vip-tag active">Biểu cảm: {generationSettings.expression}</span>
+                            <span className="vip-tag active">Tỉ lệ: {generationSettings.aspectRatio}</span>
+                        </div>
+                        <button 
+                            className="vip-action-btn btn-orange-glow" 
+                            onClick={handleChangeBackground} 
+                            disabled={isChangingBg || !bgSourceFile || (!bgCustomFile && !bgSelectedPreset)}
+                        >
+                            {isChangingBg ? <><div className="spinner"></div> Đang xử lý...</> : '🌄 Đổi Bối Cảnh Ngay'}
+                        </button>
+                    </div>
+
+                    {bgResultImage && (
+                        <div className="vip-card">
+                            <div className="vip-card-header"><h3 className="vip-card-title">Kết Quả</h3></div>
+                            <img src={bgResultImage} style={{maxWidth:'100%', borderRadius:'8px', display:'block', margin:'0 auto'}} />
+                            <div style={{textAlign:'center', marginTop:'15px'}}>
+                                <button className="btn-download" onClick={() => handleDownload(bgResultImage!, 'ChangeBg_Result')}>
+                                    ⬇️ Download 4K PNG
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </main>
              )}
 
              {/* ================= FIX SKIN / BREAST LIFT TAB ================= */}
