@@ -245,11 +245,9 @@ type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive';
 
 // --- RECOMMENDED MODELS ---
 const RECOMMENDED_MODELS = [
-    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Preview/VIP)' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Stable - Khuyên dùng)' },
-    { value: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro Exp (Mạnh mẽ)' },
-    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
-    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' }
+    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Khuyên dùng)' },
+    { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Chất lượng cao)' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Backup)' }
 ];
 
 const App = () => {
@@ -743,7 +741,7 @@ const App = () => {
                                     </div>
                                     
                                     <div style={{fontSize:'0.8rem', color:'#666', marginTop:'5px'}}>
-                                        *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.0 Flash</strong>.
+                                        *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.5 Flash Image</strong>.
                                     </div>
                                 </div>
                                 <div className="api-input-group"><textarea value={tempKeyInput} onChange={(e) => setTempKeyInput(e.target.value)} placeholder={`Dán danh sách Key ${modalSelectedProvider}...`} className="api-textarea" rows={3}/><button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button></div>
@@ -753,7 +751,12 @@ const App = () => {
                     </div>
                 </div>
             )}
-             {error && <div className="error-message">{error}</div>}
+             {error && (
+                <div className="error-message">
+                    <span>{error}</span>
+                    <button onClick={() => setError(null)} className="error-close-btn">×</button>
+                </div>
+             )}
              
              {/* ================= VIRTUAL TRY-ON TAB ================= */}
              {activeTab === 'try-on' && (
