@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
@@ -24,6 +24,14 @@ const INFLUENCER_DATA = {
         { label: 'Mỹ Latin (Latina)', value: 'Latina/Hispanic' },
         { label: 'Trung Đông (Middle Eastern)', value: 'Middle Eastern' },
         { label: 'Phi (African)', value: 'Black/African Descent' }
+    ],
+    skinTones: [
+        { label: 'Trắng sáng (Fair)', value: 'Fair/Pale skin' },
+        { label: 'Trắng hồng (Light)', value: 'Light skin with pink undertone' },
+        { label: 'Trung bình (Medium)', value: 'Medium/Tan skin' },
+        { label: 'Ngăm (Olive)', value: 'Olive skin' },
+        { label: 'Nâu (Brown)', value: 'Brown/Dark skin' },
+        { label: 'Đen (Black)', value: 'Black/Very dark skin' }
     ],
     hairOptions: {
         lengths: [
@@ -114,29 +122,6 @@ const INFLUENCER_DATA = {
 };
 
 // --- UTILS ---
-
-// Tooltip Component
-const Tooltip = ({ text, children, style }: { text: string; children?: React.ReactNode; style?: React.CSSProperties }) => {
-    const [isVisible, setIsVisible] = useState(false);
-
-    return (
-        <div 
-            className="tooltip-container" 
-            onMouseEnter={() => setIsVisible(true)}
-            onMouseLeave={() => setIsVisible(false)}
-            style={style}
-        >
-            {children}
-            {isVisible && (
-                <div className="tooltip-bubble">
-                    {text}
-                </div>
-            )}
-        </div>
-    );
-};
-
-// Helper: Remove solid background via Flood Fill from corners
 const removeBackground = async (imageSrc: string): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
@@ -201,50 +186,70 @@ const removeBackground = async (imageSrc: string): Promise<string> => {
     });
 };
 
-// Component definitions
-const ImageUploader = ({ label, image, onImageSelect, onRemove, children }: { 
+// Stable Image Uploader using useId
+const ImageUploader = ({ label, image, onImageSelect, onRemove, children, onRemoveBg }: { 
     label?: string; 
     image: string | null; 
     onImageSelect: (e: React.ChangeEvent<HTMLInputElement>) => void; 
-    onRemove?: () => void; 
+    onRemove?: () => void;
+    onRemoveBg?: () => void;
     children?: React.ReactNode;
 }) => {
+    const uniqueId = useId();
+    const inputId = `file-upload-${uniqueId}`;
+
     return (
         <div className="uploader-wrapper">
-            {label && <label className="uploader-label">{label}</label>}
-            <div className="image-upload-area" onClick={() => document.getElementById(`file-${label || 'upload'}`)?.click()}>
-                {image ? (
-                    <div className="preview-container">
-                        <img src={image} alt="Upload preview" />
-                        {onRemove && (
-                            <button 
-                                className="remove-btn"
-                                onClick={(e) => { e.stopPropagation(); onRemove(); }}
-                            >
-                                ×
-                            </button>
-                        )}
-                    </div>
-                ) : (
-                    <div className="placeholder-content">
-                        {children || <span style={{fontSize: '24px', color: '#555'}}>+</span>}
-                    </div>
-                )}
-                
-                <input 
-                    id={`file-${label || 'upload'}`}
-                    type="file" 
-                    accept="image/*" 
-                    onChange={onImageSelect} 
-                    className="hidden-input"
-                />
-            </div>
+             {label && <span className="vip-upload-label">{label}</span>}
+             <div className="vip-upload-area" onClick={() => document.getElementById(inputId)?.click()}>
+                 {image ? (
+                     <>
+                        <img src={image} alt="Preview" />
+                        <button onClick={(e) => { e.stopPropagation(); onRemove && onRemove(); }} style={{position: 'absolute', top: 5, right: 5, background: 'rgba(255,0,0,0.8)', border: 'none', borderRadius: '50%', width: 20, height: 20, color: 'white', cursor: 'pointer'}}>×</button>
+                     </>
+                 ) : (
+                     <div style={{textAlign: 'center', color: '#666', fontSize: '0.9rem'}}>
+                         {children || <span>+ Tải ảnh</span>}
+                     </div>
+                 )}
+                 <input id={inputId} type="file" accept="image/*" onChange={onImageSelect} className="hidden-input" />
+             </div>
         </div>
     );
 };
 
+// Helper to safely extract image from Gemini response
+const extractImageFromResponse = (response: any): string | null => {
+    if (response.candidates?.[0]?.content?.parts) {
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    return null;
+};
+
+// Function to handle download
+const handleDownload = (url: string, prefix: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${prefix}_${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
 type Provider = 'gemini' | 'openai' | 'grok';
 type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive';
+
+// --- RECOMMENDED MODELS ---
+const RECOMMENDED_MODELS = [
+    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Mặc định - Chuẩn)' },
+    { value: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash Exp (Khuyên dùng nếu lỗi)' },
+    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+    { value: 'gemini-3-pro-preview', label: 'Gemini 3 Pro Preview' }
+];
 
 const App = () => {
     // --- API MANAGEMENT STATE ---
@@ -254,12 +259,12 @@ const App = () => {
         grok: []
     });
     const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
+    const [modelName, setModelName] = useState('gemini-2.5-flash-image'); // Default per system instructions
     const [tempKeyInput, setTempKeyInput] = useState('');
     const [showSettings, setShowSettings] = useState(false);
     const [showGuide, setShowGuide] = useState(false);
     const [modalSelectedProvider, setModalSelectedProvider] = useState<Provider>('gemini');
     
-    // Rotation Logic refs
     const currentKeyIndices = useRef<Record<Provider, number>>({
         gemini: 0,
         openai: 0,
@@ -291,25 +296,23 @@ const App = () => {
     const [breastLiftResultImage, setBreastLiftResultImage] = useState<string | null>(null);
     const [isLiftingBreast, setIsLiftingBreast] = useState(false);
 
-    // AI Influencer Mode State
+    // AI Influencer Mode State (Unchanged functionality)
     const [influencerSettings, setInfluencerSettings] = useState({
         gender: 'Female',
         age: '20s (Young Adult)',
         ethnicity: 'Asian (Vietnamese)',
+        skinTone: 'Light skin with pink undertone',
         hair: 'Long Natural black Straight silky hair with Airy bangs (Korean style)',
         eyes: 'Dark brown',
         bodyType: 'Slim & fit',
         style: 'Modern luxury, high-end fashion, old money vibe',
         scenario: 'Drinking coffee in a cozy cafe, morning sunlight through window'
     });
-    // State to manage individual hair components before constructing the full string
-    const [hairBuilder, setHairBuilder] = useState({
-        length: 'Long',
-        color: 'Natural black',
-        texture: 'Straight silky',
-        bangs: 'Airy bangs (Korean style)'
-    });
-    
+    const [influencerHistory, setInfluencerHistory] = useState<typeof influencerSettings[]>([]);
+    const [influencerRefFile, setInfluencerRefFile] = useState<File | null>(null);
+    const [influencerRefPreview, setInfluencerRefPreview] = useState<string | null>(null);
+    const [influencerRefOptions, setInfluencerRefOptions] = useState({ style: false, face: false, body: false, outfit: false });
+    const [hairBuilder, setHairBuilder] = useState({ length: 'Long', color: 'Natural black', texture: 'Straight silky', bangs: 'Airy bangs (Korean style)' });
     const [influencerResultImage, setInfluencerResultImage] = useState<string | null>(null);
     const [isCreatingInfluencer, setIsCreatingInfluencer] = useState(false);
 
@@ -318,16 +321,11 @@ const App = () => {
     const [fullOutfitPreview, setFullOutfitPreview] = useState<string | null>(null);
     const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
     const [referencePreviews, setReferencePreviews] = useState<string[]>([]);
-
+    const [modelEditPrompt, setModelEditPrompt] = useState('');
+    const [productEditPrompt, setProductEditPrompt] = useState('');
     const [modelFile, setModelFile] = useState<File | null>(null);
     const [modelPreview, setModelPreview] = useState<string | null>(null);
-    
-    const [fullSetOptions, setFullSetOptions] = useState({
-        clothing: true,
-        shoes: false,
-        jewelry: false,
-        bag: false
-    });
+    const [fullSetOptions, setFullSetOptions] = useState({ clothing: true, shoes: false, jewelry: false, bag: false });
 
     // Mix Mode State
     const [dressImage, setDressImage] = useState<string | null>(null);
@@ -336,8 +334,6 @@ const App = () => {
     const [shoesImage, setShoesImage] = useState<string | null>(null);
     const [jewelryImage, setJewelryImage] = useState<string | null>(null);
     const [bagImage, setBagImage] = useState<string | null>(null);
-    
-    // Helper to keep track of files for mix mode
     const [mixFiles, setMixFiles] = useState<{ [key: string]: File | null }>({});
 
     const [generationSettings, setGenerationSettings] = useState({
@@ -349,12 +345,11 @@ const App = () => {
         expression: 'default' as Expression
     });
 
-    // --- INITIALIZATION & API LOGIC ---
-
-    // Load API Keys from LocalStorage
+    // --- INITIALIZATION ---
     useEffect(() => {
         const storedKeys = localStorage.getItem('multi_provider_api_keys');
         const storedActiveProvider = localStorage.getItem('active_provider') as Provider | null;
+        const storedModelName = localStorage.getItem('gemini_model_name');
 
         if (storedKeys) {
             try {
@@ -363,32 +358,25 @@ const App = () => {
             } catch (e) {
                 console.error("Error parsing keys", e);
             }
-        } else {
-             // Fallback: Use process.env.API_KEY if available as a starter
-            if (process.env.API_KEY) {
-                setApiKeys(prev => {
-                    const newState = { ...prev, gemini: [process.env.API_KEY!] };
-                    // Don't save to localStorage to avoid persisting env var, just use it in state
-                    return newState;
-                });
-            }
+        } else if (process.env.API_KEY) {
+            setApiKeys(prev => ({ ...prev, gemini: [process.env.API_KEY!] }));
         }
 
         if (storedActiveProvider && ['gemini', 'openai', 'grok'].includes(storedActiveProvider)) {
             setActiveProvider(storedActiveProvider);
             setModalSelectedProvider(storedActiveProvider);
         }
+        
+        if (storedModelName) {
+            setModelName(storedModelName);
+        }
     }, []);
 
-    // Update Hair String when builder changes
-    useEffect(() => {
-        // Only update if we are not manually overriding via typing
-        // Ideally, we just sync them for now
-        const hairStr = `${hairBuilder.length} ${hairBuilder.color} ${hairBuilder.texture} hair with ${hairBuilder.bangs}`;
-        // We only auto-update if the user hasn't completely typed something else? 
-        // For simplicity, let's make the builder drive the input, but input remains editable.
-        // We won't use a dedicated effect to overwrite constantly, we'll use a handler.
-    }, [hairBuilder]);
+    const handleModelNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newName = e.target.value;
+        setModelName(newName);
+        localStorage.setItem('gemini_model_name', newName);
+    };
 
     const updateHairFromBuilder = (newPart: Partial<typeof hairBuilder>) => {
         const newBuilder = { ...hairBuilder, ...newPart };
@@ -398,24 +386,21 @@ const App = () => {
     };
 
     const randomizeInfluencer = () => {
+        setInfluencerHistory(prev => [...prev, influencerSettings]);
         const randomItem = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
         const randomOption = (arr: {value: string}[]) => randomItem(arr).value;
-
-        // Hair Random
         const len = randomItem(INFLUENCER_DATA.hairOptions.lengths);
         const col = randomItem(INFLUENCER_DATA.hairOptions.colors);
         const tex = randomItem(INFLUENCER_DATA.hairOptions.textures);
         const bng = randomItem(INFLUENCER_DATA.hairOptions.bangs);
         const hairStr = `${len.value} ${col.value} ${tex.value} hair with ${bng.value}`;
         setHairBuilder({ length: len.value, color: col.value, texture: tex.value, bangs: bng.value });
-
-        // Scenario Random (Flatten)
         const allScenarios = Object.values(INFLUENCER_DATA.scenarios).flat();
-
         setInfluencerSettings({
             gender: randomOption(INFLUENCER_DATA.genders),
             age: randomOption(INFLUENCER_DATA.ages),
             ethnicity: randomOption(INFLUENCER_DATA.ethnicities),
+            skinTone: randomOption(INFLUENCER_DATA.skinTones),
             hair: hairStr,
             eyes: randomOption(INFLUENCER_DATA.eyes),
             bodyType: randomOption(INFLUENCER_DATA.bodyTypes),
@@ -424,23 +409,25 @@ const App = () => {
         });
     };
 
+    const undoRandomize = () => {
+        if (influencerHistory.length === 0) return;
+        const previousState = influencerHistory[influencerHistory.length - 1];
+        setInfluencerSettings(previousState);
+        setInfluencerHistory(prev => prev.slice(0, -1));
+    };
+
+    const toggleInfluencerRefOption = (option: keyof typeof influencerRefOptions) => {
+        setInfluencerRefOptions(prev => ({ ...prev, [option]: !prev[option] }));
+    };
+
     const addApiKeys = () => {
         if (!tempKeyInput.trim()) return;
-        
-        const newKeys = tempKeyInput
-            .split(/[\n,]+/)
-            .map(k => k.trim())
-            .filter(k => k.length > 5);
-
+        const newKeys = tempKeyInput.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 5);
         if (newKeys.length > 0) {
             setApiKeys(prev => {
                 const currentProviderKeys = prev[modalSelectedProvider];
                 const uniqueNewKeys = newKeys.filter(k => !currentProviderKeys.includes(k));
-                
-                const newState = {
-                    ...prev,
-                    [modalSelectedProvider]: [...currentProviderKeys, ...uniqueNewKeys]
-                };
+                const newState = { ...prev, [modalSelectedProvider]: [...currentProviderKeys, ...uniqueNewKeys] };
                 localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
                 return newState;
             });
@@ -454,10 +441,7 @@ const App = () => {
             const updatedKeys = currentProviderKeys.filter((_, i) => i !== index);
             const newState = { ...prev, [provider]: updatedKeys };
             localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
-            
-            if (currentKeyIndices.current[provider] >= updatedKeys.length) {
-                currentKeyIndices.current[provider] = 0;
-            }
+            if (currentKeyIndices.current[provider] >= updatedKeys.length) currentKeyIndices.current[provider] = 0;
             return newState;
         });
     };
@@ -467,53 +451,36 @@ const App = () => {
         localStorage.setItem('active_provider', provider);
     };
 
-    // CORE: Rotation Logic
     const executeWithRotation = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
         const providerKeys = apiKeys[activeProvider];
-
-        if (activeProvider !== 'gemini') {
-            throw new Error(`Nhà cung cấp ${activeProvider.toUpperCase()} chưa được hỗ trợ cho chức năng này. Vui lòng chọn Gemini.`);
-        }
-
+        if (activeProvider !== 'gemini') throw new Error(`Nhà cung cấp ${activeProvider.toUpperCase()} chưa được hỗ trợ.`);
         if (providerKeys.length === 0) {
             setShowSettings(true);
             throw new Error(`Vui lòng nhập API Key cho ${activeProvider.toUpperCase()} trong phần Cài đặt.`);
         }
-
         let lastError: any = new Error("Unknown error");
         const startIndex = currentKeyIndices.current[activeProvider];
-
         for (let i = 0; i < providerKeys.length; i++) {
             const index = (startIndex + i) % providerKeys.length;
             const key = providerKeys[index];
-
             try {
                 const result = await operation(key);
-                // Success: update sticky index
                 currentKeyIndices.current[activeProvider] = index;
                 return result;
             } catch (err: any) {
-                // If it's a content refusal (Safety/Policy), DON'T rotate, just fail.
+                // Modified error handling to show user specific model errors (like 404 Model not found)
                 if (err.message && (err.message.includes("AI không trả về ảnh") || err.message.includes("Safety"))) {
-                    throw err; 
+                     throw err; 
                 }
-
+                // If it's a 404 or 400 (Model not found/Bad Request), we might want to let the user know, but rotation tries other keys first.
+                // However, if ALL keys fail, we throw the last error.
                 console.warn(`Key ...${key.slice(-4)} failed:`, err.message);
                 lastError = err;
             }
         }
-        throw new Error(`Tất cả Key của ${activeProvider.toUpperCase()} đều lỗi. Lỗi cuối: ${lastError.message}`);
+        throw new Error(`Lỗi API (${lastError.message}). Hãy kiểm tra Key hoặc thử đổi Model Name trong Cài đặt.`);
     };
 
-    // --- UTILS FOR APP ---
-    const getDownloadFileName = (prefix: string) => {
-        const now = new Date();
-        const pad = (n: number) => n.toString().padStart(2, '0');
-        const timeStr = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-        return `${prefix}_${timeStr}.png`;
-    };
-
-    // --- HANDLERS ---
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
@@ -522,29 +489,29 @@ const App = () => {
         }
     };
 
-    const handleSwapImages = () => {
-        // Swap file objects
-        const tempFile = swapTargetFile;
-        setSwapTargetFile(swapSourceFile);
-        setSwapSourceFile(tempFile);
+    const fileToBase64 = (file: File): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                if (typeof reader.result === 'string') resolve(reader.result.split(',')[1]);
+                else reject(new Error("Failed to read file"));
+            };
+            reader.onerror = error => reject(error);
+        });
+    };
 
-        // Swap preview strings
-        const tempPreview = swapTargetPreview;
-        setSwapTargetPreview(swapSourcePreview);
-        setSwapSourcePreview(tempPreview);
+    const handleSwapImages = () => {
+        const tempFile = swapTargetFile; setSwapTargetFile(swapSourceFile); setSwapSourceFile(tempFile);
+        const tempPreview = swapTargetPreview; setSwapTargetPreview(swapSourcePreview); setSwapSourcePreview(tempPreview);
     };
 
     const handleReferenceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            if (referenceFiles.length >= 3) {
-                alert("Tối đa 3 ảnh tham khảo.");
-                return;
-            }
+            if (referenceFiles.length >= 3) { alert("Tối đa 3 ảnh tham khảo."); return; }
             const file = e.target.files[0];
-            const url = URL.createObjectURL(file);
             setReferenceFiles(prev => [...prev, file]);
-            setReferencePreviews(prev => [...prev, url]);
-            
+            setReferencePreviews(prev => [...prev, URL.createObjectURL(file)]);
             e.target.value = ''; 
         }
     };
@@ -568,1278 +535,660 @@ const App = () => {
         }
     };
 
-    const toggleFullSetOption = (key: keyof typeof fullSetOptions) => {
-        setFullSetOptions(prev => ({ ...prev, [key]: !prev[key] }));
-    };
+    const toggleFullSetOption = (key: keyof typeof fullSetOptions) => setFullSetOptions(prev => ({ ...prev, [key]: !prev[key] }));
+    const setAspectRatio = (ratio: string) => setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
+    const setExpression = (expr: Expression) => setGenerationSettings(prev => ({ ...prev, expression: expr }));
+    const toggleGenerationSetting = (key: keyof typeof generationSettings) => setGenerationSettings(prev => ({ ...prev, [key]: !prev[key] }));
 
-    const setAspectRatio = (ratio: string) => {
-        setGenerationSettings(prev => ({ ...prev, aspectRatio: ratio }));
-    };
-
-    const setExpression = (expr: Expression) => {
-        setGenerationSettings(prev => ({ ...prev, expression: expr }));
-    };
-
-    const toggleGenerationSetting = (key: keyof typeof generationSettings) => {
-        setGenerationSettings(prev => {
-            const newState = { ...prev, [key]: !prev[key] };
-            // Conflict handling: Transparent implies Change Background implicitly in UI logic, but here we can just update state.
-            // If transparent is turned ON, we might want to uncheck "Change Background" to avoid visual clutter, but prompt logic handles priority.
-            if (key === 'transparentBackground' && newState.transparentBackground) {
-                // Optional: Force changeBackground off if transparent is on, or just let prompt logic handle it.
-                // newState.changeBackground = false; 
-            }
-            return newState;
-        });
-    };
-
-    const handleDirectGarmentUpload = (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            const url = URL.createObjectURL(file);
-            setMixFiles(prev => ({ ...prev, [type]: file }));
-            
-            switch(type) {
-                case 'dress': setDressImage(url); break;
-                case 'top': setTopImage(url); break;
-                case 'bottom': setBottomImage(url); break;
-                case 'shoes': setShoesImage(url); break;
-                case 'jewelry': setJewelryImage(url); break;
-                case 'bag': setBagImage(url); break;
-            }
-        }
-    };
-
-    const handleRemoveGarment = (type: string) => {
-        setMixFiles(prev => ({ ...prev, [type]: null }));
-        switch(type) {
-            case 'dress': setDressImage(null); break;
-            case 'top': setTopImage(null); break;
-            case 'bottom': setBottomImage(null); break;
-            case 'shoes': setShoesImage(null); break;
-            case 'jewelry': setJewelryImage(null); break;
-            case 'bag': setBagImage(null); break;
-        }
-    };
-
-    const handleInfluencerSettingChange = (field: string, value: string) => {
-        setInfluencerSettings(prev => ({
-            ...prev,
-            [field]: value
-        }));
-    };
-
-    const fileToBase64 = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => {
-                if (typeof reader.result === 'string') {
-                    resolve(reader.result.split(',')[1]);
-                } else {
-                    reject(new Error("Failed to read file"));
-                }
-            };
-            reader.onerror = error => reject(error);
-        });
-    };
-
-    // --- GENERATION FUNCTIONS ---
+    const handleInfluencerSettingChange = (field: string, value: string) => setInfluencerSettings(prev => ({ ...prev, [field]: value }));
 
     const handleCreateInfluencer = async () => {
-        setIsCreatingInfluencer(true);
-        setInfluencerResultImage(null);
-        setError(null);
-
+        setIsCreatingInfluencer(true); setInfluencerResultImage(null); setError(null);
         try {
-            const { gender, age, ethnicity, hair, eyes, bodyType, style, scenario } = influencerSettings;
+            const { gender, age, ethnicity, skinTone, hair, eyes, bodyType, style, scenario } = influencerSettings;
             const parts: any[] = [];
-
-            let textPrompt = "TASK: Create a High-End Virtual Influencer (AI KOL) - Photorealistic Portrait.\n\n";
-            
-            textPrompt += "1. **CHARACTER SPECIFICATIONS**:\n";
-            textPrompt += `   - **Gender**: ${gender}.\n`;
-            textPrompt += `   - **Age**: ${age}.\n`;
-            textPrompt += `   - **Ethnicity/Origin**: ${ethnicity}.\n`;
-            textPrompt += `   - **Hair**: ${hair}.\n`;
-            textPrompt += `   - **Eyes**: ${eyes}.\n`;
-            textPrompt += `   - **Body Type**: ${bodyType}.\n`;
-            textPrompt += `   - **Features**: Flawless skin texture, perfect symmetry, high-fashion makeup (if female), confident expression.\n\n`;
-
-            textPrompt += "2. **STYLE & SCENARIO**:\n";
-            textPrompt += `   - **Fashion Style**: ${style}.\n`;
-            textPrompt += `   - **Setting/Activity**: ${scenario}.\n\n`;
-
-            textPrompt += "3. **PHOTOGRAPHY QUALITY**:\n";
-            textPrompt += "   - Style: Professional Editorial/Lifestyle Photography.\n";
-            textPrompt += "   - Lighting: Soft, cinematic natural lighting or studio lighting as appropriate for scene.\n";
-            textPrompt += "   - Details: 8k resolution, ultra-detailed skin pores, realistic hair physics, depth of field.\n";
-            
-            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            
-            // Strict No-Text Instruction
-            textPrompt += "\n\n**CRITICAL OUTPUT RULE**: Return ONLY the generated image. Do NOT output any text.";
-
+             if (influencerRefFile) {
+                const refB64 = await fileToBase64(influencerRefFile);
+                let refPrompt = "REFERENCE IMAGE INSTRUCTIONS:\n";
+                if (influencerRefOptions.style) refPrompt += "- **STYLE/LIGHTING**: Mimic the lighting, color grading, and photography style of this reference image.\n";
+                if (influencerRefOptions.face) refPrompt += "- **FACE**: Use the facial features and identity from this image as the base (blended with text description).\n";
+                if (influencerRefOptions.body) refPrompt += "- **POSE/BODY**: Replicate the exact pose and body structure shown here.\n";
+                if (influencerRefOptions.outfit) refPrompt += "- **OUTFIT**: Wear the clothing shown in this image.\n";
+                parts.push({ text: refPrompt });
+                parts.push({ inlineData: { mimeType: influencerRefFile.type, data: refB64 } });
+            }
+            let textPrompt = `TASK: Create a High-End Virtual Influencer (AI KOL). ${gender}, ${age}, ${ethnicity}, ${skinTone}, ${hair}, ${eyes}, ${bodyType}. Style: ${style}. Scenario: ${scenario}. High quality photography.`;
             parts.push({ text: textPrompt });
-
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
-                const modelName = 'gemini-2.5-flash-image';
-                
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: parts },
-                    config: {
-                        // Use string literals for safety settings to ensure compatibility and loose typing if needed
-                        safetySettings: [
-                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-                        ]
-                    }
-                });
-
-                let finalUrl: string | null = null;
-                if (response.candidates?.[0]?.content?.parts) {
-                    for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData) {
-                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            break;
-                        }
-                    }
-                }
-
-                if (!finalUrl) {
-                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                        throw new Error("AI không trả về ảnh" + extraText); 
-                }
-
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh (Model có thể chỉ trả về text)");
                 setInfluencerResultImage(finalUrl);
                 return response;
             });
-
-        } catch (err: any) {
-            console.error(err);
-            setError("Lỗi tạo Influencer: " + err.message);
-        } finally {
-            setIsCreatingInfluencer(false);
-        }
+        } catch (err: any) { setError("Lỗi tạo Influencer: " + err.message); } finally { setIsCreatingInfluencer(false); }
     };
 
     const handleSwapFace = async () => {
         if (!swapTargetFile || !swapSourceFile) return;
-        setIsSwapping(true);
-        setSwapResultImage(null);
-        setError(null);
-
+        setIsSwapping(true); setSwapResultImage(null); setError(null);
         try {
             const parts: any[] = [];
             const targetB64 = await fileToBase64(swapTargetFile);
             const sourceB64 = await fileToBase64(swapSourceFile);
-
-            // STRATEGY CHANGE: Provide Source Identity FIRST to anchor the model on the face features.
-            parts.push({ text: "SOURCE IMAGE [IDENTITY]: Contains the face to swap. Focus on internal facial features (eyes, nose, mouth) and unique characteristics (moles, scars)." });
-            parts.push({
-                inlineData: { mimeType: swapSourceFile.type, data: sourceB64 }
-            });
-
-            parts.push({ text: "TARGET IMAGE [BODY/POSE]: Contains the body, pose, and background. The face here must be replaced." });
-            parts.push({
-                inlineData: { mimeType: swapTargetFile.type, data: targetB64 }
-            });
-
-            // UPDATED PROMPT: More technical, less chatty to avoid AI text refusal.
-            let textPrompt = "TASK: Advanced Image Compositing & Identity Transfer.\n";
-            textPrompt += "OBJECTIVE: Generate a photorealistic image by seamlessly compositing the facial features from the SOURCE IMAGE onto the body of the TARGET IMAGE.\n\n";
-
-            textPrompt += "1. IDENTITY PRESERVATION (CRITICAL):\n";
-            textPrompt += "   - Maintain facial features: eyes, nose, mouth shape from SOURCE.\n";
-            textPrompt += "   - Preserve unique characteristics: moles, scars, wrinkles from SOURCE.\n";
-            textPrompt += "   - Keep facial structure and proportions accurate to SOURCE.\n";
-
-            textPrompt += "2. POSE & EXPRESSION MATCHING:\n";
-            textPrompt += "   - Match head pose angle from TARGET (yaw, pitch, roll).\n";
-            textPrompt += "   - Align face orientation exactly to the TARGET's neck and head shape.\n";
-
-             // EXPRESSION LOGIC
-            if (generationSettings.expression && generationSettings.expression !== 'default') {
-                const expr = generationSettings.expression;
-                textPrompt += `   - **EXPRESSION**: Change the facial expression to '${expr.toUpperCase()}'.\n`;
-            } else {
-                textPrompt += "   - Adapt facial expression to match the TARGET's original expression/vibe.\n";
-            }
-
-            textPrompt += "3. SEAMLESS BLENDING (High Priority):\n";
-            textPrompt += "   - **Color Grading**: Match skin tone of the new face EXACTLY to the TARGET's neck and body.\n";
-            textPrompt += "   - **Lighting**: Preserve TARGET's lighting direction, temperature, and shadows.\n";
-            textPrompt += "   - **Texture**: Ensure natural skin texture and grain consistency.\n";
-            textPrompt += "   - Blend face boundary smoothly without visible seams.\n";
-
-            textPrompt += "4. CONTEXT PRESERVATION:\n";
-            textPrompt += "   - Keep the TARGET's background, clothing, and hair UNCHANGED (unless hair obscures the face, then adapt naturally).\n";
-
-             // POSE LOGIC OVERRIDE
-            if (generationSettings.changePose) {
-                textPrompt += "- **POSE OVERRIDE**: IGNORE the specific pose of TARGET. Generate a NEW, dynamic fashion pose for the subject (SOURCE Identity in TARGET Clothes).\n";
-            } 
-            
-            // BACKGROUND LOGIC
-            if (generationSettings.transparentBackground) {
-                textPrompt += "- **BACKGROUND**: **SOLID WHITE**. Render on a flat white background for removal.\n";
-            } else if (generationSettings.changeBackground) {
-                textPrompt += "- **BACKGROUND**: Place the subject in a new high-end studio or luxury environment.\n";
-            } else {
-                textPrompt += "- **BACKGROUND**: Keep the original background of TARGET exactly as is.\n";
-            }
-
-            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            textPrompt += "\nStyle: 8k resolution, Photorealistic, High Fidelity.";
-            
-            // Strict No-Text Instruction
-            textPrompt += "\n\n**CRITICAL OUTPUT RULE**: Return ONLY the generated image. Do NOT output any text, explanation, or chat. Just the image.";
-
+            parts.push({ text: "SOURCE IMAGE [IDENTITY]: Focus on internal facial features." });
+            parts.push({ inlineData: { mimeType: swapSourceFile.type, data: sourceB64 } });
+            parts.push({ text: "TARGET IMAGE [BODY/POSE]: Replace face here." });
+            parts.push({ inlineData: { mimeType: swapTargetFile.type, data: targetB64 } });
+            let textPrompt = `TASK: Swap Face. Expression: ${generationSettings.expression}. Pose: ${generationSettings.changePose ? 'New' : 'Keep'}. Bg: ${generationSettings.transparentBackground ? 'White' : (generationSettings.changeBackground ? 'New' : 'Keep')}. Ratio: ${generationSettings.aspectRatio}.`;
             parts.push({ text: textPrompt });
-
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
-                const modelName = 'gemini-2.5-flash-image';
-                
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: parts },
-                    config: {
-                        // Use string literals for safety settings to ensure compatibility and loose typing if needed
-                        safetySettings: [
-                            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-                            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-                        ]
-                    }
-                });
-
-                let finalUrl: string | null = null;
-                if (response.candidates?.[0]?.content?.parts) {
-                    for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData) {
-                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            break;
-                        }
-                    }
-                }
-
-                if (!finalUrl) {
-                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                        throw new Error("AI không trả về ảnh" + extraText); 
-                }
-                
-                if (generationSettings.transparentBackground) {
-                    finalUrl = await removeBackground(finalUrl);
-                }
-
-                setSwapResultImage(finalUrl);
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                 const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh");
+                let resUrl = finalUrl;
+                if (generationSettings.transparentBackground) resUrl = await removeBackground(resUrl);
+                setSwapResultImage(resUrl);
                 return response;
             });
-
-        } catch (err: any) {
-            console.error(err);
-            setError("Lỗi Swap Face: " + err.message);
-        } finally {
-            setIsSwapping(false);
-        }
+        } catch (err: any) { setError("Lỗi Swap Face: " + err.message); } finally { setIsSwapping(false); }
     };
 
     const handleGenerateTryOn = async () => {
-        setIsGenerating(true);
-        setFinalImage(null);
-        setError(null);
-
+        setIsGenerating(true); setFinalImage(null); setError(null);
         try {
             const parts: any[] = [];
-            
-            // 1. Model Image (The most critical input)
             if (modelFile) {
                 const modelB64 = await fileToBase64(modelFile);
-                parts.push({ text: "IMAGE A [TARGET MODEL]: This is the PRIMARY image. You must preserve the identity (face), body shape, and skin tone of this person." });
-                parts.push({
-                    inlineData: {
-                        mimeType: modelFile.type,
-                        data: modelB64
-                    }
-                });
+                parts.push({ text: "IMAGE A [TARGET MODEL]" });
+                parts.push({ inlineData: { mimeType: modelFile.type, data: modelB64 } });
             }
-
-            // 2. Clothing Image(s)
             if (tryOnMode === 'full' && fullOutfitFile) {
                 const outfitB64 = await fileToBase64(fullOutfitFile);
-                parts.push({ text: "IMAGE B [CLOTHING SOURCE]: Extract the garment design, texture, and details from this image. Do NOT use the person/face from this image." });
-                parts.push({
-                    inlineData: {
-                        mimeType: fullOutfitFile.type,
-                        data: outfitB64
-                    }
-                });
-
-                // Add Reference Images if available
-                if (referenceFiles.length > 0) {
-                    for (let i = 0; i < referenceFiles.length; i++) {
-                        const refB64 = await fileToBase64(referenceFiles[i]);
-                        parts.push({ text: `IMAGE [REFERENCE OUTFIT ${i+1}]: Auxiliary reference for the clothing details in IMAGE B.` });
-                        parts.push({
-                            inlineData: {
-                                mimeType: referenceFiles[i].type,
-                                data: refB64
-                            }
-                        });
-                    }
+                parts.push({ text: "IMAGE B [CLOTHING]" });
+                parts.push({ inlineData: { mimeType: fullOutfitFile.type, data: outfitB64 } });
+                for (const f of referenceFiles) {
+                    const b64 = await fileToBase64(f);
+                    parts.push({ inlineData: { mimeType: f.type, data: b64 } });
                 }
             } else if (tryOnMode === 'mix') {
-                for (const [key, file] of Object.entries(mixFiles)) {
+                 for (const [key, file] of Object.entries(mixFiles)) {
                     if (file) {
-                        const f = file as File;
-                        const b64 = await fileToBase64(f);
-                        parts.push({ text: `IMAGE [CLOTHING ITEM - ${key.toUpperCase()}]: Wear this item.` });
-                        parts.push({
-                            inlineData: {
-                                mimeType: f.type,
-                                data: b64
-                            }
-                        });
+                        const b64 = await fileToBase64(file as File);
+                        parts.push({ text: `ITEM [${key}]` });
+                        parts.push({ inlineData: { mimeType: (file as File).type, data: b64 } });
                     }
                 }
             }
-
-            // 3. Construct the Master Prompt
-            let textPrompt = "TASK: Professional Virtual Try-On & Photorealistic Compositing.\n";
-            textPrompt += "ACTION: Dress the person in IMAGE A [TARGET MODEL] with the clothing from IMAGE B (or the provided clothing items).\n\n";
-
-            textPrompt += "🔴 STRICT IDENTITY & ANATOMY RULES (HIGHEST PRIORITY):\n";
-            textPrompt += "1. **FACE INTEGRITY**: You MUST keep the face of the person in IMAGE A exactly as is. **Do NOT swap faces.** Do NOT morph the face with IMAGE B. The output face must be indistinguishable from IMAGE A.\n";
-            textPrompt += "2. **BODY SHAPE**: Preserve the exact body proportions, height, and weight of the person in IMAGE A. Do not make them thinner or curvier unless explicitly asked.\n";
-            textPrompt += "3. **SKIN TONE**: Maintain the exact skin tone and texture of the person in IMAGE A.\n\n";
-
-            textPrompt += "🔵 CLOTHING INTEGRATION:\n";
-            textPrompt += "- Warp and fit the clothing from IMAGE B naturally onto the body of IMAGE A.\n";
-            textPrompt += "- Preserve realistic fabric folds, textures, and lighting from the clothing source.\n";
-            
-            if (tryOnMode === 'full') {
-                 const activeOptions = Object.entries(fullSetOptions)
-                    .filter(([_, active]) => active)
-                    .map(([key]) => key);
-                
-                if (activeOptions.length > 0) {
-                     textPrompt += `- **TARGETED REPLACEMENT**: ONLY replace the [${activeOptions.join(', ')}]. Keep other original items (hair accessories, etc.) from IMAGE A if they don't conflict.\n`;
-                }
-            }
-
-            textPrompt += "\n🟢 GENERATION SETTINGS:\n";
-            
-            // POSE LOGIC
-            if (generationSettings.changePose) {
-                textPrompt += "- **POSE**: Generate a NEW dynamic, fashion-forward pose. However, the FACE and BODY ID must still match IMAGE A.\n";
-            } else {
-                textPrompt += "- **POSE**: **STRICTLY PRESERVE** the original pose, arm placement, and head angle of IMAGE A. This acts like an advanced inpainting task.\n";
-            }
-            
-            // BACKGROUND LOGIC
-            if (generationSettings.transparentBackground) {
-                textPrompt += "- **BACKGROUND**: **SOLID WHITE (Hex #FFFFFF)**. CRITICAL: Render on a flat white background. NO shadows, NO floor reflections, NO noise. This is for background removal.\n";
-            } else if (generationSettings.changeBackground) {
-                textPrompt += "- **BACKGROUND**: Place the subject in a completely new, high-end professional studio setting (soft lighting, neutral tones).\n";
-            } else {
-                textPrompt += "- **BACKGROUND**: Keep the original background from IMAGE A exactly as is.\n";
-            }
-
-            // FULL BODY LOGIC
-            if (generationSettings.generateFullBody) {
-                textPrompt += "- **FRAMING**: FULL BODY. If IMAGE A is a crop, realistically generate the missing legs/shoes to match the style.\n";
-            } else {
-                textPrompt += "- **FRAMING**: Maintain the exact cropping and aspect ratio of IMAGE A.\n";
-            }
-
-            textPrompt += `\nOutput Aspect Ratio: ${generationSettings.aspectRatio}.`;
-            textPrompt += "\nStyle: 8k resolution, Photorealistic, Commercial Fashion Photography, High Detail.";
-
+            let textPrompt = `TASK: Virtual Try-On. Dress Image A with items. Pose: ${generationSettings.changePose ? 'New' : 'Keep'}. Bg: ${generationSettings.transparentBackground ? 'White' : (generationSettings.changeBackground ? 'New' : 'Keep')}. FullBody: ${generationSettings.generateFullBody}. Ratio: ${generationSettings.aspectRatio}.`;
             parts.push({ text: textPrompt });
-
-            // Use Rotation
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
-                const modelName = 'gemini-2.5-flash-image';
-                
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: parts },
-                });
-
-                let finalUrl: string | null = null;
-                if (response.candidates?.[0]?.content?.parts) {
-                    for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData) {
-                            finalUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            break;
-                        }
-                    }
-                }
-
-                if (!finalUrl) {
-                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                        throw new Error("AI không trả về ảnh" + extraText); 
-                }
-                
-                // Post-process transparency
-                if (generationSettings.transparentBackground) {
-                    finalUrl = await removeBackground(finalUrl);
-                }
-
-                setFinalImage(finalUrl);
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh");
+                let resUrl = finalUrl;
+                if (generationSettings.transparentBackground) resUrl = await removeBackground(resUrl);
+                setFinalImage(resUrl);
                 return response;
             });
-
-        } catch (err: any) {
-            console.error("Generation error:", err);
-            setError("Lỗi tạo ảnh: " + (err.message || "Vui lòng kiểm tra lại."));
-        } finally {
-            setIsGenerating(false);
-        }
+        } catch (err: any) { setError("Lỗi tạo ảnh: " + err.message); } finally { setIsGenerating(false); }
     };
 
     const processSkinFix = async (imageSrc: string) => {
-        setIsFixingSkin(true);
-        setError(null);
-        setSkinFixResultImage(null);
-
+        setIsFixingSkin(true); setError(null); setSkinFixResultImage(null);
         try {
             const base64Data = imageSrc.split(',')[1];
             const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
-
-            const parts = [
-                {
-                    inlineData: {
-                        mimeType: mimeType,
-                        data: base64Data
-                    }
-                },
-                { text: "TASK: Advanced Photorealistic Skin Restoration (De-Plasticizing).\n" +
-                  "CONTEXT: The input image is an AI-generated portrait with 'plastic/waxy' skin artifacts.\n" +
-                  "OBJECTIVE: Restore physics-based skin properties without altering the subject's identity.\n\n" +
-
-                  "EXECUTION STEPS:\n" +
-                  "1. SEGMENTATION & PARSING: Focus EXCLUSIVELY on skin regions (cheeks, forehead, chin, nose bridge). STRICTLY PROTECT eyes, eyebrows, lips, and hair from any changes.\n" +
-                  "2. PLASTICITY DETECTION: Identify areas lacking high-frequency details (smooth, blur patches).\n" +
-                  "3. MICRO-TEXTURE SYNTHESIS: Generate non-repeating, irregular micro-textures (pores, fine lines, skin variance) appropriate for the subject's age and lighting conditions. Remove the 'low-frequency' smooth look.\n" +
-                  "4. LIGHTING PHYSICS: Simulate Subsurface Scattering (SSS) to remove the hard 'plastic' shine. Soften specular highlights to look like organic skin, not plastic. Add micro-contrast shadows to skin texture.\n" +
-                  "5. NOISE/GRAIN: Add subtle, realistic camera sensor noise/grain to match a high-end photography look.\n\n" +
-
-                  "NEGATIVE CONSTRAINTS (MUST AVOID):\n" +
-                  "- DO NOT change facial geometry, bone structure, or expression (Identity Preservation is PARAMOUNT).\n" +
-                  "- DO NOT add heavy blemishes or age spots unless present in original.\n" +
-                  "- DO NOT smooth, beautify, or apply 'filters'.\n" +
-                  "- NO waxiness, NO airbrush look."
-                }
-            ];
-
+            const parts = [{ inlineData: { mimeType: mimeType, data: base64Data } }, { text: "TASK: Skin Restoration. Remove plastic/waxy look. Add realistic skin texture/pores. Keep identity." }];
             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
-                const modelName = 'gemini-2.5-flash-image';
-                
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: parts },
-                });
-
-                let foundImage = false;
-                if (response.candidates?.[0]?.content?.parts) {
-                    for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData) {
-                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            setSkinFixResultImage(imageUrl);
-                            foundImage = true;
-                        }
-                    }
-                }
-                if (!foundImage) {
-                    const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                    throw new Error("AI không trả về ảnh" + extraText);
-                }
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh");
+                setSkinFixResultImage(finalUrl);
                 return response;
             });
-
-        } catch (e: any) {
-            console.error(e);
-            setError("Lỗi khi xử lý da: " + e.message);
-        } finally {
-            setIsFixingSkin(false);
-        }
-    };
-
-    const handleTransferToSkinFix = async (imageSrc: string) => {
-        setSkinFixInputImage(imageSrc);
-        setActiveTab('fix-skin');
-        await processSkinFix(imageSrc);
+        } catch (e: any) { setError("Lỗi: " + e.message); } finally { setIsFixingSkin(false); }
     };
 
     const processBreastLift = async (imageSrc: string) => {
-        setIsLiftingBreast(true);
-        setError(null);
-        setBreastLiftResultImage(null);
-
+        setIsLiftingBreast(true); setError(null); setBreastLiftResultImage(null);
         try {
             const base64Data = imageSrc.split(',')[1];
             const mimeType = imageSrc.match(/data:(.*?);base64/)?.[1] || 'image/png';
-
-            const parts = [
-                {
-                    inlineData: {
-                        mimeType: mimeType,
-                        data: base64Data
-                    }
-                },
-                { text: "TASK: Digital Body Transformation - Maximum Augmentation.\n" +
-                  "OBJECTIVE: Alter the subject's physique to have a significantly larger, voluptuous bust (Cup size increase: +5).\n\n" +
-
-                  "VISUAL INSTRUCTIONS:\n" +
-                  "1. **OVERRIDE SILHOUETTE:** You MUST expand the boundaries of the upper body. Do not constrain the new shape to the old clothing lines. Draw a NEW, EXPANDED chest silhouette.\n" +
-                  "2. **CLOTHING PHYSICS:** The clothes must look TIGHT. Render tension lines, stretching fabric, and stress on buttons/seams. The fabric should cling to the under-curve of the chest.\n" +
-                  "3. **SHADING & VOLUME:** Create deep cleavage shadows. Add specular highlights on the upper chest to emphasize spherical volume.\n" +
-                  "4. **PROPORTIONS:** Create an exaggerated 'Hourglass' figure by widening the chest and keeping the waist slim.\n\n" +
-
-                  "STRICT RULES:\n" +
-                  "- **PRESERVE IDENTITY:** Face, hair, and head MUST remain 100% original.\n" +
-                  "- **PRESERVE BACKGROUND:** Do not warp the background.\n" +
-                  "- **OUTPUT STYLE:** Photorealistic, high definition."
-                }
-            ];
-
-            await executeWithRotation(async (key) => {
+            const parts = [{ inlineData: { mimeType: mimeType, data: base64Data } }, { text: "TASK: Body Transformation. Increase bust size significantly (+5 cup). Keep identity and background." }];
+             await executeWithRotation(async (key) => {
                 const ai = new GoogleGenAI({ apiKey: key });
-                const modelName = 'gemini-2.5-flash-image';
-
-                const response = await ai.models.generateContent({
-                    model: modelName,
-                    contents: { parts: parts },
-                });
-
-                let foundImage = false;
-                if (response.candidates?.[0]?.content?.parts) {
-                    for (const part of response.candidates[0].content.parts) {
-                        if (part.inlineData) {
-                            const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                            setBreastLiftResultImage(imageUrl);
-                            foundImage = true;
-                        }
-                    }
-                }
-                if (!foundImage) {
-                        const extraText = response.text ? ` (AI Refusal: ${response.text})` : "";
-                        throw new Error("AI không trả về ảnh" + extraText);
-                }
+                const response = await ai.models.generateContent({ model: modelName, contents: { parts: parts } });
+                const finalUrl = extractImageFromResponse(response);
+                if (!finalUrl) throw new Error("AI không trả về ảnh");
+                setBreastLiftResultImage(finalUrl);
                 return response;
             });
-
-        } catch (e: any) {
-            console.error(e);
-            setError("Lỗi khi xử lý nâng ngực: " + e.message);
-        } finally {
-            setIsLiftingBreast(false);
-        }
+        } catch (e: any) { setError("Lỗi: " + e.message); } finally { setIsLiftingBreast(false); }
     };
 
-    const handleTransferToBreastLift = async (imageSrc: string) => {
-        setBreastLiftInputImage(imageSrc);
-        setActiveTab('breast-lift');
-        await processBreastLift(imageSrc);
-    };
+    const handleTransferToSkinFix = async (imageSrc: string) => { setSkinFixInputImage(imageSrc); setActiveTab('fix-skin'); await processSkinFix(imageSrc); };
+    const handleTransferToBreastLift = async (imageSrc: string) => { setBreastLiftInputImage(imageSrc); setActiveTab('breast-lift'); await processBreastLift(imageSrc); };
+
+    // Status Helper
+    const isModelReady = !!modelFile;
+    const isOutfitReady = tryOnMode === 'full' ? !!fullOutfitFile : Object.values(mixFiles).some(f => f);
 
     return (
         <div className="container">
-            {/* --- HEADER WITH SETTINGS BTN --- */}
             <header className="main-header">
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
-                
                 <div className="header-actions">
-                    <button 
-                        className="settings-btn"
-                        onClick={() => setShowSettings(true)}
-                    >
-                        <span style={{fontSize: '1.2rem'}}>⚙️</span>
-                        <span>Cài đặt API</span>
-                    </button>
-                    <button 
-                        className="guide-btn"
-                        onClick={() => setShowGuide(true)}
-                    >
-                        <span style={{fontSize: '1.2rem'}}>📖</span>
-                        <span>Hướng dẫn</span>
-                    </button>
+                    <button className="settings-btn" onClick={() => setShowSettings(true)}><span>⚙️</span><span>Cài đặt API</span></button>
+                    <button className="guide-btn" onClick={() => setShowGuide(true)}><span>📖</span><span>Hướng dẫn</span></button>
                 </div>
-                {activeProvider !== 'gemini' && (
-                    <div style={{marginTop: '0px', color: '#f59e0b', fontSize: '0.9rem'}}>
-                        ⚠️ Đang dùng: {activeProvider.toUpperCase()} (Chưa hỗ trợ tạo ảnh)
-                    </div>
-                )}
-
                 <nav className="main-nav">
-                    <button 
-                        className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('ai-influencer')}
-                    >
-                        🌟 Create AI Influencer
-                    </button>
-                    <button 
-                        className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('try-on')}
-                    >
-                        👗 Virtual Try-On
-                    </button>
-                    <button 
-                        className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('swap-face')}
-                    >
-                        🎭 Swap Face (Ghép Mặt)
-                    </button>
-                    <button 
-                        className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('fix-skin')}
-                    >
-                        ✨ Fix Da Nhựa
-                    </button>
-                    <button 
-                        className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`}
-                        onClick={() => setActiveTab('breast-lift')}
-                    >
-                        👙 AI Nâng Ngực
-                    </button>
+                    <button className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`} onClick={() => setActiveTab('try-on')}>👗 Virtual Try-On</button>
+                    <button className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`} onClick={() => setActiveTab('swap-face')}>🎭 Swap Face (Ghép Mặt)</button>
+                    <button className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`} onClick={() => setActiveTab('fix-skin')}>✨ Fix Da Nhựa</button>
+                    <button className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`} onClick={() => setActiveTab('breast-lift')}>👙 AI Nâng Ngực</button>
+                    <button className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`} onClick={() => setActiveTab('ai-influencer')}>🌟 Create AI Influencer</button>
                 </nav>
             </header>
 
-            {/* --- GUIDE MODAL & SETTINGS MODAL (KEEP AS IS, omitted for brevity in change block if not changing) --- */}
-            {/* ... GUIDE & SETTINGS ... */}
-            {showGuide && (
-                <div className="modal-overlay">
-                    <div className="modal-content settings-modal-wide">
-                        <div className="modal-header">
-                            <h3>Hướng dẫn sử dụng & Giới thiệu</h3>
-                            <button className="modal-close" onClick={() => setShowGuide(false)}>×</button>
-                        </div>
-                        <div className="modal-main guide-content">
-                            {/* Keep guide content */}
-                            <div className="guide-features">
-                                <div className="feature-box">
-                                    <strong>Công nghệ Đột phá</strong>
-                                    Sử dụng AI Generative mới nhất để hiểu sâu về cấu trúc trang phục và cơ thể người.
-                                </div>
-                                <div className="feature-box">
-                                    <strong>Bảo toàn Danh tính</strong>
-                                    Thuật toán "Identity Preservation" giúp giữ nguyên khuôn mặt và vóc dáng mẫu gốc.
-                                </div>
-                                <div className="feature-box">
-                                    <strong>Xử lý Đa chiều</strong>
-                                    Hỗ trợ thay đổi tư thế (Pose), bối cảnh, và tự động xóa phông nền (Alpha channel).
-                                </div>
-                            </div>
-                            
-                            <div className="guide-section">
-                                <h4>1. Virtual Try-On (Thử đồ ảo)</h4>
-                                <ul>
-                                    <li><strong>Full Set:</strong> Dành cho khi bạn có ảnh chụp sẵn một bộ đồ hoàn chỉnh (trải sàn hoặc ma-nơ-canh) và muốn ướm lên mẫu.</li>
-                                    <li><strong>Mix & Match:</strong> Dành cho khi bạn muốn phối các món đồ lẻ (áo, quần, giày...) lại với nhau.</li>
-                                    <li><strong>Lưu ý:</strong> Ảnh mẫu nên rõ mặt và chụp chính diện để có kết quả tốt nhất.</li>
-                                </ul>
-                            </div>
-                            
-                            <div className="guide-section">
-                                <h4>2. Swap Face (Ghép mặt)</h4>
-                                <ul>
-                                    <li><strong>Ảnh Gốc (Target):</strong> Chọn ảnh chứa cơ thể, trang phục và bối cảnh bạn muốn giữ lại.</li>
-                                    <li><strong>Ảnh Mặt (Source):</strong> Chọn ảnh chứa khuôn mặt người bạn muốn ghép vào.</li>
-                                    <li>AI sẽ tự động đồng bộ màu da và ánh sáng. Bạn có thể chọn đổi tư thế hoặc bối cảnh nếu muốn sáng tạo thêm.</li>
-                                </ul>
-                            </div>
-
-                            <div className="guide-section">
-                                <h4>3. Fix Da Nhựa (Skin Enhancer)</h4>
-                                <ul>
-                                    <li>Công cụ chuyên dụng để xử lý các ảnh AI bị lỗi da "bóng loáng" hoặc "giả trân".</li>
-                                    <li>AI sẽ tái tạo lại lỗ chân lông, thêm hạt (grain) và điều chỉnh ánh sáng để da trông như chụp bằng máy ảnh thật.</li>
-                                </ul>
-                            </div>
-
-                             <div className="guide-section">
-                                <h4>4. AI Nâng Ngực (Body Enhancer)</h4>
-                                <ul>
-                                    <li>Tự động nhận diện vùng ngực và điều chỉnh kích thước tự nhiên.</li>
-                                    <li>AI tự động tính toán độ căng của vải và bóng đổ để đảm bảo tính vật lý chân thực.</li>
-                                </ul>
-                            </div>
-
-                            <div className="guide-section">
-                                <h4>5. Create AI Influencer (Tạo KOL ảo)</h4>
-                                <ul>
-                                    <li>Tạo nhân vật ảo (Virtual Influencer) chuyên nghiệp dựa trên các thông số tùy chỉnh.</li>
-                                    <li>Chọn giới tính, tuổi, sắc tộc, phong cách và bối cảnh để AI tạo ra hình ảnh chân thực nhất.</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            
+            {/* MODALS */}
             {showSettings && (
                  <div className="modal-overlay">
                     <div className="modal-content settings-modal-wide">
-                        <div className="modal-header">
-                            <h3>Quản lý API Key</h3>
-                            <button className="modal-close" onClick={() => setShowSettings(false)}>×</button>
-                        </div>
+                        <div className="modal-header"><h3>Quản lý API Key</h3><button className="modal-close" onClick={() => setShowSettings(false)}>×</button></div>
                         <div className="modal-body">
-                           {/* Keep settings body */}
                             <div className="modal-sidebar">
                                 <button className={`sidebar-item ${modalSelectedProvider === 'gemini' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('gemini')}><span className="icon">💎</span> Gemini <span className="count-badge">{apiKeys.gemini.length}</span></button>
-                                <button className={`sidebar-item ${modalSelectedProvider === 'openai' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('openai')}><span className="icon">🌀</span> Open AI <span className="count-badge">{apiKeys.openai.length}</span></button>
-                                <button className={`sidebar-item ${modalSelectedProvider === 'grok' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('grok')}><span className="icon">🚀</span> Grok <span className="count-badge">{apiKeys.grok.length}</span></button>
-                                <div className="active-provider-section"><label>Đang sử dụng:</label><select value={activeProvider} onChange={(e) => handleSetActiveProvider(e.target.value as Provider)} className="provider-select"><option value="gemini">Gemini (Khuyên dùng)</option><option value="openai">Open AI</option><option value="grok">Grok</option></select></div>
+                                <div className="active-provider-section"><label>Đang sử dụng:</label><select value={activeProvider} onChange={(e) => handleSetActiveProvider(e.target.value as Provider)} className="provider-select"><option value="gemini">Gemini</option></select></div>
                             </div>
                             <div className="modal-main">
-                                <h4 style={{marginTop: 0, marginBottom: '10px', textTransform: 'capitalize'}}>Quản lý Key {modalSelectedProvider}</h4>
+                                <div style={{marginBottom: '15px', padding: '10px', background: '#111', borderRadius: '8px', border: '1px solid #333'}}>
+                                    <label className="vip-label" style={{color:'#f59e0b'}}>Cấu hình Model:</label>
+                                    
+                                    <div style={{marginBottom:'10px'}}>
+                                        <label className="vip-label" style={{fontSize:'0.8rem', color:'#888'}}>Chọn nhanh:</label>
+                                        <select 
+                                            className="vip-select" 
+                                            onChange={(e) => {
+                                                if(e.target.value) {
+                                                    setModelName(e.target.value);
+                                                    localStorage.setItem('gemini_model_name', e.target.value);
+                                                }
+                                            }}
+                                            value={RECOMMENDED_MODELS.some(m => m.value === modelName) ? modelName : ""}
+                                        >
+                                            <option value="" disabled>-- Chọn Model từ danh sách --</option>
+                                            {RECOMMENDED_MODELS.map(m => (
+                                                <option key={m.value} value={m.value}>{m.label}</option>
+                                            ))}
+                                            <option value="custom">Tùy chỉnh (Nhập tay bên dưới)</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="vip-label" style={{fontSize:'0.8rem', color:'#888'}}>Tên Model (Editable):</label>
+                                        <input 
+                                            type="text" 
+                                            className="vip-input" 
+                                            value={modelName} 
+                                            onChange={handleModelNameChange} 
+                                            placeholder="Nhập tên model..." 
+                                        />
+                                    </div>
+                                    
+                                    <div style={{fontSize:'0.8rem', color:'#666', marginTop:'5px'}}>
+                                        *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.0 Flash Exp</strong>.
+                                    </div>
+                                </div>
                                 <div className="api-input-group"><textarea value={tempKeyInput} onChange={(e) => setTempKeyInput(e.target.value)} placeholder={`Dán danh sách Key ${modalSelectedProvider}...`} className="api-textarea" rows={3}/><button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button></div>
-                                <div className="key-list-container"><div className="key-list-header">Danh sách Key ({apiKeys[modalSelectedProvider].length})</div><div className="key-list">{apiKeys[modalSelectedProvider].length === 0 ? (<div className="empty-keys">Chưa có Key nào.</div>) : (apiKeys[modalSelectedProvider].map((k, i) => (<div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}><div className="key-info"><span className={`key-status-dot ${modalSelectedProvider === activeProvider ? 'active' : 'inactive'}`}></span><span className="key-text">...{k.slice(-6)}</span></div><button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button></div>)))}</div></div>
+                                <div className="key-list-container"><div className="key-list">{apiKeys[modalSelectedProvider].map((k, i) => (<div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}><div className="key-info">...{k.slice(-6)}</div><button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button></div>))}</div></div>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
-
              {error && <div className="error-message">{error}</div>}
              
-             {/* --- VIRTUAL TRY ON TAB --- */}
+             {/* ================= VIRTUAL TRY-ON TAB ================= */}
              {activeTab === 'try-on' && (
                  <main className="workflow-container">
                     <div className="mode-switcher-container">
-                        <Tooltip text="Chế độ thay toàn bộ trang phục từ một ảnh duy nhất.">
-                            <button className={`btn ${tryOnMode === 'full' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setTryOnMode('full'); setError(null); }}>✨ Full Set (Nguyên Bộ)</button>
-                        </Tooltip>
-                        <Tooltip text="Chế độ phối hợp nhiều món đồ lẻ (áo, quần, giày...) lên người mẫu.">
-                            <button className={`btn ${tryOnMode === 'mix' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setTryOnMode('mix'); setError(null); }}>🧩 Mix & Match (Lẻ)</button>
-                        </Tooltip>
+                         <button className={`nav-item nav-try-on ${tryOnMode === 'full' ? 'active' : ''}`} style={{borderRadius:'8px'}} onClick={() => setTryOnMode('full')}>✨ Full Set (Nguyên Bộ)</button>
+                         <button className={`nav-item nav-influencer ${tryOnMode === 'mix' ? 'active' : ''}`} style={{borderRadius:'8px'}} onClick={() => setTryOnMode('mix')}>🧩 Mix & Match (Lẻ)</button>
                     </div>
 
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">1</span> Cấu hình & Dữ liệu</h2>
-                        {tryOnMode === 'full' ? (
-                            <div className="full-mode-container">
-                                <div className="dual-upload-container">
-                                    <div className="upload-box">
-                                        <ImageUploader label="1. Ảnh Set Đồ" image={fullOutfitPreview} onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)} onRemove={() => {setFullOutfitFile(null); setFullOutfitPreview(null)}}>
-                                            <p>Tải ảnh nguyên set đồ</p>
-                                        </ImageUploader>
-                                        <div className="reference-section" style={{marginTop:'10px'}}>
-                                            <div className="reference-header"><label>Ảnh tham khảo (Tùy chọn)</label><span>{referenceFiles.length}/3</span></div>
-                                            <div className="reference-grid">
-                                                {referencePreviews.map((src, idx) => (
-                                                    <div key={idx} className="reference-item"><img src={src} /><button onClick={() => removeReferenceImage(idx)}>×</button></div>
-                                                ))}
-                                                {referenceFiles.length < 3 && (<div className="reference-add-btn" onClick={() => document.getElementById('ref-upload')?.click()}>+</div>)}
-                                                <input id="ref-upload" type="file" accept="image/*" onChange={handleReferenceUpload} style={{display: 'none'}} />
-                                            </div>
-                                        </div>
+                    <div className="vip-card">
+                        <div className="vip-card-header">
+                            <div className="vip-step-badge">1</div>
+                            <h3 className="vip-card-title">Cấu hình & Dữ liệu</h3>
+                        </div>
+
+                        <div className="vip-grid-container">
+                            {/* LEFT COL: Outfit */}
+                            <div>
+                                <ImageUploader label="1. Ảnh Set Đồ (Chính)" image={fullOutfitPreview} onImageSelect={(e) => handleFileChange(e, setFullOutfitFile, setFullOutfitPreview)} onRemove={() => {setFullOutfitFile(null); setFullOutfitPreview(null)}}><p style={{color:'#666'}}>Tải ảnh chứa nguyên set đồ</p></ImageUploader>
+                                <div className="vip-ref-area">
+                                    <div className="vip-ref-header">
+                                        <span>Ảnh tham khảo (Tùy chọn)</span>
+                                        <span>{referenceFiles.length}/3</span>
                                     </div>
-                                    <div className="upload-box"><ImageUploader label="2. Ảnh Mẫu" image={modelPreview} onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)} onRemove={() => {setModelFile(null); setModelPreview(null)}}><p>Tải ảnh mẫu</p></ImageUploader></div>
+                                    <div className="vip-ref-grid">
+                                        <div className="vip-ref-slot" onClick={() => document.getElementById('ref-upload')?.click()}>
+                                            +
+                                        </div>
+                                        {referencePreviews.map((src, i) => (
+                                            <div key={i} className="vip-ref-slot">
+                                                <img src={src} />
+                                                <button className="vip-ref-remove" onClick={(e) => {e.stopPropagation(); removeReferenceImage(i);}}>×</button>
+                                            </div>
+                                        ))}
+                                        <input id="ref-upload" type="file" accept="image/*" onChange={handleReferenceUpload} className="hidden-input" />
+                                    </div>
+                                    <div style={{fontSize:'0.7rem', color:'#555', marginTop:'8px'}}>*Upload thêm góc nhìn khác để AI hiểu rõ hơn.</div>
                                 </div>
-                                <div className="settings-panel">
-                                    <div className="settings-columns">
-                                        <div className="settings-card">
-                                            <div className="settings-card-header"><label>3. Chọn mục cần thay:</label></div>
-                                            <div className="option-toggles-list">
-                                                <button className={`option-btn ${fullSetOptions.clothing ? 'active' : ''}`} onClick={() => toggleFullSetOption('clothing')}><span>👗 Quần/Áo/Váy</span>{fullSetOptions.clothing && <span>✓</span>}</button>
-                                                <button className={`option-btn ${fullSetOptions.shoes ? 'active' : ''}`} onClick={() => toggleFullSetOption('shoes')}><span>👠 Giày/Dép</span>{fullSetOptions.shoes && <span>✓</span>}</button>
-                                                <button className={`option-btn ${fullSetOptions.jewelry ? 'active' : ''}`} onClick={() => toggleFullSetOption('jewelry')}><span>💎 Trang sức</span>{fullSetOptions.jewelry && <span>✓</span>}</button>
-                                                <button className={`option-btn ${fullSetOptions.bag ? 'active' : ''}`} onClick={() => toggleFullSetOption('bag')}><span>👜 Túi xách</span>{fullSetOptions.bag && <span>✓</span>}</button>
-                                            </div>
-                                        </div>
-                                        <div className="settings-card">
-                                            <div className="settings-card-header"><label>4. Cài đặt tạo ảnh:</label></div>
-                                            <div className="option-toggles-list">
-                                                 <div className="aspect-ratio-selector">
-                                                    <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
-                                                    <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
-                                                </div>
-                                                <div className="settings-grid-2col">
-                                                    <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}><span>💃 Đổi tư thế</span>{generationSettings.changePose && <span>✓</span>}</button>
-                                                    <button className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`} onClick={() => toggleGenerationSetting('generateFullBody')}><span>🧍 Toàn thân</span>{generationSettings.generateFullBody && <span>✓</span>}</button>
-                                                    <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground} style={generationSettings.transparentBackground ? {opacity: 0.5} : {}}><span>🏞️ Đổi nền</span>{generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}</button>
-                                                    <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}><span>🔳 Nền rỗng</span>{generationSettings.transparentBackground && <span>✓</span>}</button>
-                                                </div>
-                                            </div>
-                                        </div>
+                            </div>
+                            
+                            {/* RIGHT COL: Model */}
+                            <div>
+                                <ImageUploader label="2. Ảnh Người Mẫu" image={modelPreview} onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)} onRemove={() => {setModelFile(null); setModelPreview(null)}}><p style={{color:'#666'}}>Tải ảnh người mẫu</p></ImageUploader>
+                            </div>
+
+                            {/* BOTTOM LEFT: Selection */}
+                            <div>
+                                <label className="vip-upload-label">3. Chọn mục cần thay:</label>
+                                <div className="vip-option-list">
+                                    <div className={`vip-option-item ${fullSetOptions.clothing ? 'active' : ''}`} onClick={() => toggleFullSetOption('clothing')}>
+                                        <span>👗 Quần/Áo/Váy</span>
+                                        {fullSetOptions.clothing && <span>✓</span>}
+                                    </div>
+                                    <div className={`vip-option-item ${fullSetOptions.shoes ? 'active' : ''}`} onClick={() => toggleFullSetOption('shoes')}>
+                                        <span>👠 Giày/Dép</span>
+                                        {fullSetOptions.shoes && <span>✓</span>}
+                                    </div>
+                                    <div className={`vip-option-item ${fullSetOptions.jewelry ? 'active' : ''}`} onClick={() => toggleFullSetOption('jewelry')}>
+                                        <span>💎 Trang sức</span>
+                                        {fullSetOptions.jewelry && <span>✓</span>}
+                                    </div>
+                                    <div className={`vip-option-item ${fullSetOptions.bag ? 'active' : ''}`} onClick={() => toggleFullSetOption('bag')}>
+                                        <span>👜 Túi xách</span>
+                                        {fullSetOptions.bag && <span>✓</span>}
                                     </div>
                                 </div>
                             </div>
-                        ) : (
-                             <div className="mix-mode-grid">
-                                 <div className="model-upload-center" style={{marginBottom: '20px'}}>
-                                     <ImageUploader image={modelPreview} onImageSelect={(e) => handleFileChange(e, setModelFile, setModelPreview)}><p>+ Tải ảnh người mẫu</p></ImageUploader>
-                                 </div>
-                                 <div className="extracted-items">
-                                     <ImageUploader label="Váy" image={dressImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'dress')} onRemove={()=>handleRemoveGarment('dress')} />
-                                     <ImageUploader label="Áo" image={topImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'top')} onRemove={()=>handleRemoveGarment('top')} />
-                                     <ImageUploader label="Quần" image={bottomImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'bottom')} onRemove={()=>handleRemoveGarment('bottom')} />
-                                     <ImageUploader label="Giày" image={shoesImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'shoes')} onRemove={()=>handleRemoveGarment('shoes')} />
-                                     <ImageUploader label="Trang sức" image={jewelryImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'jewelry')} onRemove={()=>handleRemoveGarment('jewelry')} />
-                                     <ImageUploader label="Túi" image={bagImage} onImageSelect={(e)=>handleDirectGarmentUpload(e,'bag')} onRemove={()=>handleRemoveGarment('bag')} />
-                                 </div>
-                                 <div className="mix-mode-options">
-                                     <div className="aspect-ratio-selector">
-                                        <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
-                                        <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
-                                    </div>
-                                    <div className="settings-grid-2col" style={{marginTop:'10px'}}>
-                                        <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}>💃 Đổi tư thế</button>
-                                        <button className={`option-btn ${generationSettings.generateFullBody ? 'active' : ''}`} onClick={() => toggleGenerationSetting('generateFullBody')}>🧍 Toàn thân</button>
-                                        <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground}>🏞️ Đổi nền</button>
-                                        <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}>🔳 Nền rỗng</button>
-                                    </div>
-                                 </div>
-                             </div>
-                        )}
-                    </section>
-                    
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">{tryOnMode === 'full' ? '2' : '3'}</span> Hoàn Tất</h2>
-                        <div className="finalize-box">
-                             <div className="summary-info">
-                                <p>Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix & Match'}</strong></p>
-                                
-                                {tryOnMode === 'mix' && (
-                                    <ul className="status-list">
-                                        <li>Trang phục chính: {dressImage ? '✅ Váy/Đầm' : (topImage || bottomImage ? `✅ ${topImage ? 'Áo' : ''} ${bottomImage ? 'Quần' : ''}` : '❌ Chưa chọn')}</li>
-                                        <li>Phụ kiện: {[
-                                            shoesImage ? 'Giày' : '',
-                                            jewelryImage ? 'Trang sức' : '',
-                                            bagImage ? 'Túi' : ''
-                                        ].filter(Boolean).join(', ') || 'Không'}</li>
-                                    </ul>
-                                )}
-                                
-                                {tryOnMode === 'full' && (
-                                    <ul className="status-list balanced-list">
-                                        <li>Set đồ: {fullOutfitFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                        <li>Mẫu: {modelFile ? '✅ Sẵn sàng' : '❌ Thiếu'}</li>
-                                        <li>Thay: 
-                                            {[
-                                                fullSetOptions.clothing ? 'Áo/Quần' : '',
-                                                fullSetOptions.shoes ? 'Giày' : '',
-                                                fullSetOptions.jewelry ? 'Trang sức' : '',
-                                                fullSetOptions.bag ? 'Túi' : ''
-                                            ].filter(Boolean).join(', ') || 'Chưa chọn'}
-                                        </li>
-                                    </ul>
-                                )}
 
-                                <div className="generation-settings-summary">
-                                    {generationSettings.changePose ? '✅ Tư thế mới' : '🔒 Giữ tư thế'} • 
-                                    {generationSettings.transparentBackground ? '✅ Nền trắng' : (generationSettings.changeBackground ? ' ✅ Bối cảnh mới' : ' 🔒 Giữ nền')} • 
-                                    {generationSettings.generateFullBody ? ' ✅ Toàn thân' : ' 🔒 Giữ khung'} •
-                                    {generationSettings.aspectRatio === '9:16' ? ' 📱 Dọc (9:16)' : ' 💻 Ngang (16:9)'}
+                            {/* BOTTOM RIGHT: Settings */}
+                            <div>
+                                <label className="vip-upload-label">4. Cài đặt tạo ảnh:</label>
+                                <div className="vip-settings-box">
+                                     <div className="vip-toggle-row">
+                                         <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 Dọc (9:16)</button>
+                                         <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 Ngang (16:9)</button>
+                                     </div>
+                                     <div className="vip-toggle-row">
+                                         <button className={`vip-toggle-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}>💃 Đổi tư thế {generationSettings.changePose && '✓'}</button>
+                                         <button className={`vip-toggle-btn ${generationSettings.generateFullBody ? 'active' : ''}`} onClick={() => toggleGenerationSetting('generateFullBody')}>🧍 Toàn thân {generationSettings.generateFullBody && '✓'}</button>
+                                     </div>
+                                     <div className="vip-toggle-row">
+                                         <button className={`vip-toggle-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')}>🏞️ Đổi nền {generationSettings.changeBackground && '✓'}</button>
+                                         <button className={`vip-toggle-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}>🔳 Nền rỗng {generationSettings.transparentBackground && '✓'}</button>
+                                     </div>
                                 </div>
-                             </div>
-                             <button className="btn btn-primary start-btn" onClick={handleGenerateTryOn} disabled={isGenerating || !modelFile}>
-                                ✨ {isGenerating ? 'Đang xử lý...' : 'Bắt đầu ghép đồ'}
-                             </button>
+                            </div>
                         </div>
-                    </section>
+                    </div>
 
-                    {(finalImage || isGenerating) && (<section className="step-card full-width"><h2>Kết quả</h2>{isGenerating ? <div style={{textAlign:'center'}}><div className="spinner"></div><p style={{marginTop:'10px', color:'#888'}}>Đang xử lý...</p></div> : <div style={{textAlign:'center'}}><img src={finalImage} style={{maxWidth:'100%', borderRadius:'8px'}}/><div style={{marginTop:'15px', display:'flex', gap:'10px', justifyContent:'center'}}><a href={finalImage} download="try-on-result.png" className="btn btn-primary" style={{textDecoration:'none'}}>💾 Tải về</a><button className="btn btn-secondary" onClick={()=>setFinalImage(null)}>🔄 Làm lại</button><button className="btn" style={{background:'#f59e0b', color:'white'}} onClick={()=>handleTransferToSkinFix(finalImage)}>✨ Fix da</button></div></div>}</section>)}
+                    {/* Footer Status & Action */}
+                    <div className="vip-footer-card">
+                        <div className="vip-card-header">
+                            <div className="vip-step-badge">2</div>
+                            <h3 className="vip-card-title">Hoàn Tất</h3>
+                        </div>
+                        <div className="vip-status-box">
+                            <span className="vip-status-line">Cấu hình hiện tại: <strong>{tryOnMode === 'full' ? 'Full Set (Nguyên Bộ)' : 'Mix Mode'}</strong></span>
+                            <br/>
+                            <span className="vip-status-line">Set đồ: {isOutfitReady ? <span className="vip-status-ok">✔ Sẵn sàng</span> : <span className="vip-status-err">✘ Thiếu</span>}</span>
+                            <span className="vip-status-line">Mẫu: {isModelReady ? <span className="vip-status-ok">✔ Sẵn sàng</span> : <span className="vip-status-err">✘ Thiếu</span>}</span>
+                            <span className="vip-status-line">Thay: {Object.keys(fullSetOptions).filter(k => (fullSetOptions as any)[k]).join(', ') || 'Chưa chọn'}</span>
+                        </div>
+                        <div className="vip-tags">
+                            <span className={`vip-tag ${generationSettings.changePose ? 'active' : ''}`}>✔ Tư thế mới</span>
+                            <span className={`vip-tag ${generationSettings.changeBackground ? 'active' : ''}`}>✔ Bối cảnh mới</span>
+                            <span className="vip-tag active">🔒 Giữ khung</span>
+                            <span className="vip-tag active">📱 Dọc (9:16)</span>
+                        </div>
+                        <button 
+                            className={`vip-action-btn btn-blue-glow ${!isGenerating && isOutfitReady && isModelReady ? 'ready' : ''}`} 
+                            onClick={handleGenerateTryOn} 
+                            disabled={isGenerating || !isOutfitReady || !isModelReady}
+                        >
+                            {isGenerating ? <><div className="spinner"></div> Đang ghép đồ...</> : '✨ Bắt đầu ghép đồ'}
+                        </button>
+                    </div>
+
+                    {finalImage && (
+                        <div className="vip-card">
+                            <div className="vip-card-header"><h3 className="vip-card-title">Kết Quả</h3></div>
+                            <img src={finalImage} style={{maxWidth:'100%', borderRadius:'8px', display:'block', margin:'0 auto'}} />
+                            <div style={{textAlign:'center', marginTop:'15px'}}>
+                                <button className="btn-download" onClick={() => handleDownload(finalImage!, 'TryOn_Result')}>
+                                    ⬇️ Download 4K PNG
+                                </button>
+                                <button className="btn btn-secondary" style={{marginTop:'10px'}} onClick={()=>handleTransferToSkinFix(finalImage!)}>Chuyển sang Fix Da ✨</button>
+                            </div>
+                        </div>
+                    )}
                  </main>
              )}
 
-             {/* --- SWAP FACE TAB --- */}
+             {/* ================= SWAP FACE TAB ================= */}
              {activeTab === 'swap-face' && (
                  <main className="workflow-container">
-                     <section className="step-card full-width">
-                        <h2><span className="step-number">1</span> Dữ liệu Swap Face</h2>
-                        <div className="dual-upload-container" style={{position:'relative', alignItems:'center'}}>
-                            <button className="swap-btn" onClick={handleSwapImages} title="Đổi vị trí">↔️</button>
-                            <div className="upload-box"><ImageUploader label="1. Body (Target)" image={swapTargetPreview} onImageSelect={(e) => handleFileChange(e, setSwapTargetFile, setSwapTargetPreview)} onRemove={()=>{setSwapTargetFile(null); setSwapTargetPreview(null)}}><p>Ảnh giữ Body</p></ImageUploader></div>
-                            <div className="upload-box"><ImageUploader label="2. Face (Source)" image={swapSourcePreview} onImageSelect={(e) => handleFileChange(e, setSwapSourceFile, setSwapSourcePreview)} onRemove={()=>{setSwapSourceFile(null); setSwapSourcePreview(null)}}><p>Ảnh lấy Mặt</p></ImageUploader></div>
+                     <div className="vip-card">
+                         <div className="vip-card-header">
+                            <div className="vip-step-badge">1</div>
+                            <h3 className="vip-card-title">Dữ Liệu & Cấu Hình</h3>
                         </div>
 
-                        <div className="settings-panel">
-                            <div className="settings-card">
-                                <div className="settings-card-header"><label>Cài đặt tạo ảnh:</label></div>
-                                <div className="option-toggles-list">
-                                    <div className="aspect-ratio-selector">
-                                        <button className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
-                                        <button className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
-                                    </div>
-                                    <div className="settings-grid-2col">
-                                        <button className={`option-btn ${generationSettings.changePose ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changePose')}><span>💃 Đổi tư thế</span>{generationSettings.changePose && <span>✓</span>}</button>
-                                        <button className={`option-btn ${generationSettings.changeBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground}><span>🏞️ Đổi nền</span>{generationSettings.changeBackground && !generationSettings.transparentBackground && <span>✓</span>}</button>
-                                        <button className={`option-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}><span>🔳 Nền rỗng</span>{generationSettings.transparentBackground && <span>✓</span>}</button>
-                                    </div>
-                                    <div className="settings-card-header" style={{marginTop:'15px'}}><label>Biểu cảm:</label></div>
-                                    <div className="aspect-ratio-selector" style={{flexWrap:'wrap'}}>
-                                        <button className={`option-btn ${generationSettings.expression === 'default' ? 'active' : ''}`} onClick={() => setExpression('default')} style={{flex:1, minWidth:'80px'}}>😐 Gốc</button>
-                                        <button className={`option-btn ${generationSettings.expression === 'happy' ? 'active' : ''}`} onClick={() => setExpression('happy')} style={{flex:1, minWidth:'80px'}}>😄 Vui</button>
-                                        <button className={`option-btn ${generationSettings.expression === 'serious' ? 'active' : ''}`} onClick={() => setExpression('serious')} style={{flex:1, minWidth:'80px'}}>😎 Ngầu</button>
-                                        <button className={`option-btn ${generationSettings.expression === 'surprised' ? 'active' : ''}`} onClick={() => setExpression('surprised')} style={{flex:1, minWidth:'80px'}}>😮 Wow</button>
-                                        <button className={`option-btn ${generationSettings.expression === 'seductive' ? 'active' : ''}`} onClick={() => setExpression('seductive')} style={{flex:1, minWidth:'80px'}}>😏 Cuốn</button>
-                                    </div>
-                                </div>
+                        {/* Combined Upload Section */}
+                        <div className="swap-container" style={{marginBottom: '20px'}}>
+                            <div className="swap-box">
+                                <ImageUploader label="1. Ảnh Gốc (Body/Target)" image={swapTargetPreview} onImageSelect={(e) => handleFileChange(e, setSwapTargetFile, setSwapTargetPreview)} onRemove={()=>{setSwapTargetFile(null); setSwapTargetPreview(null)}}><p style={{color:'#666'}}>Tải ảnh gốc (giữ body)</p></ImageUploader>
+                            </div>
+                            <button className="swap-arrow-btn" onClick={handleSwapImages} title="Đổi vị trí">↔</button>
+                            <div className="swap-box">
+                                <ImageUploader label="2. Ảnh Khuôn Mặt (Source)" image={swapSourcePreview} onImageSelect={(e) => handleFileChange(e, setSwapSourceFile, setSwapSourcePreview)} onRemove={()=>{setSwapSourceFile(null); setSwapSourcePreview(null)}}><p style={{color:'#666'}}>Tải ảnh khuôn mặt</p></ImageUploader>
                             </div>
                         </div>
-                     </section>
 
-                     <section className="step-card full-width">
-                        <h2><span className="step-number">2</span> Thực Hiện</h2>
-                        <button className="btn btn-primary start-btn" onClick={handleSwapFace} disabled={isSwapping || !swapTargetFile || !swapSourceFile} style={{background: 'linear-gradient(135deg, #10b981, #059669)'}}>
-                            🎭 {isSwapping ? 'Đang xử lý...' : 'Bắt đầu Swap Face'}
+                        {/* Streamlined Settings Box */}
+                        <div className="vip-settings-box">
+                             <div className="vip-grid-container" style={{marginBottom: 0, gap: '20px'}}>
+                                 <div>
+                                     <label className="vip-upload-label">Tỉ lệ & Background:</label>
+                                     <div className="vip-toggle-row">
+                                         <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 9:16</button>
+                                         <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 16:9</button>
+                                     </div>
+                                      <div className="vip-toggle-row">
+                                         <button className={`vip-toggle-btn ${generationSettings.changeBackground ? 'active-blue' : ''}`} onClick={() => toggleGenerationSetting('changeBackground')} disabled={generationSettings.transparentBackground}>🏞️ Đổi nền {generationSettings.changeBackground && '✓'}</button>
+                                         <button className={`vip-toggle-btn ${generationSettings.transparentBackground ? 'active' : ''}`} onClick={() => toggleGenerationSetting('transparentBackground')}>🔳 Nền rỗng</button>
+                                     </div>
+                                 </div>
+                                 <div>
+                                     <label className="vip-upload-label">Biểu cảm khuôn mặt:</label>
+                                      <div className="vip-expression-bar" style={{flexWrap: 'wrap'}}>
+                                         {['default', 'happy', 'serious', 'surprised', 'seductive'].map((exp) => (
+                                             <button 
+                                                key={exp}
+                                                className={`vip-expr-btn ${generationSettings.expression === exp ? 'active' : ''}`}
+                                                onClick={() => setExpression(exp as Expression)}
+                                                style={{minWidth: '60px'}}
+                                             >
+                                                 {exp === 'default' && '😐 Gốc'}
+                                                 {exp === 'happy' && '😄 Vui'}
+                                                 {exp === 'serious' && '😎 Ngầu'}
+                                                 {exp === 'surprised' && '😮 Wow'}
+                                                 {exp === 'seductive' && '😏 Cuốn'}
+                                             </button>
+                                         ))}
+                                     </div>
+                                 </div>
+                             </div>
+                        </div>
+                     </div>
+
+                     <div className="vip-card">
+                         <div className="vip-card-header">
+                            <div className="vip-step-badge">2</div>
+                            <h3 className="vip-card-title">Thực Hiện</h3>
+                        </div>
+                        <button 
+                            className="vip-action-btn btn-green-glow" 
+                            onClick={handleSwapFace} 
+                            disabled={isSwapping || !swapTargetFile || !swapSourceFile}
+                        >
+                            {isSwapping ? <><div className="spinner"></div> Đang xử lý...</> : '🎭 Bắt đầu Swap Face'}
                         </button>
-                     </section>
+                     </div>
 
-                     {(swapResultImage || isSwapping) && (<section className="step-card full-width"><h2>Kết quả</h2>{isSwapping ? <div style={{textAlign:'center'}}><div className="spinner" style={{borderLeftColor:'#10b981'}}></div><p style={{marginTop:'10px', color:'#888'}}>Đang xử lý...</p></div> : <div style={{textAlign:'center'}}><img src={swapResultImage} style={{maxWidth:'100%', borderRadius:'8px'}}/><div style={{marginTop:'15px', display:'flex', gap:'10px', justifyContent:'center'}}><a href={swapResultImage} download="swap-result.png" className="btn btn-primary" style={{textDecoration:'none', background:'#10b981'}}>💾 Tải về</a><button className="btn btn-secondary" onClick={()=>setSwapResultImage(null)}>🔄 Làm lại</button><button className="btn" style={{background:'#f59e0b', color:'white'}} onClick={()=>handleTransferToSkinFix(swapResultImage)}>✨ Fix da</button></div></div>}</section>)}
+                     {swapResultImage && (
+                        <div className="vip-card">
+                             <div className="vip-card-header">
+                                <div className="vip-step-badge">3</div>
+                                <h3 className="vip-card-title">Kết Quả</h3>
+                            </div>
+                            <img src={swapResultImage} style={{maxWidth:'100%', borderRadius:'8px', display:'block', margin:'0 auto'}} />
+                            <div style={{textAlign:'center', marginTop:'15px'}}>
+                                <button className="btn-download" onClick={() => handleDownload(swapResultImage!, 'SwapFace_Result')}>
+                                    ⬇️ Download 4K PNG
+                                </button>
+                            </div>
+                        </div>
+                     )}
                  </main>
              )}
 
-            {/* --- FIX SKIN TAB --- */}
-            {activeTab === 'fix-skin' && (
-                <main className="workflow-container">
-                    <button className="btn btn-secondary" onClick={() => setActiveTab('try-on')} style={{alignSelf: 'flex-start', marginBottom: '1rem'}}>← Quay lại Try-On</button>
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">✨</span> Fix Da Nhựa (Skin Enhancer)</h2>
-                        <div className="dual-upload-container" style={{alignItems: 'start'}}>
-                            <div className="upload-box">
-                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
-                                <ImageUploader image={skinFixInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setSkinFixInputImage, setSkinFixResultImage)} onRemove={()=>{setSkinFixInputImage(null); setSkinFixResultImage(null)}}><p>Tải ảnh để fix da</p></ImageUploader>
-                                {skinFixInputImage && !isFixingSkin && !skinFixResultImage && (
-                                     <button className="btn btn-primary" style={{width: '100%', marginTop: '10px'}} onClick={() => processSkinFix(skinFixInputImage)}>Bắt đầu Fix Da</button>
-                                )}
-                            </div>
-                            <div className="upload-box">
-                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
-                                {isFixingSkin ? (
-                                    <div style={{textAlign: 'center', padding: '40px', background:'#252525', borderRadius:'10px'}}>
-                                        <div className="spinner"></div>
-                                        <p style={{marginTop: '15px', color: '#888'}}>Đang tái tạo bề mặt da...</p>
-                                    </div>
-                                ) : skinFixResultImage ? (
-                                    <div>
-                                        <img src={skinFixResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Fixed" />
-                                        <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={skinFixResultImage} download="skin-fix-result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
-                                             <button className="btn" style={{ background: 'linear-gradient(to right, #c084fc, #e879f9)', color: 'black', border: 'none', fontWeight: 600 }} onClick={() => handleTransferToBreastLift(skinFixResultImage)}>👙 Nâng Ngực Tiếp</button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div style={{padding: '40px', textAlign: 'center', color: '#666', background:'#252525', borderRadius:'10px', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>Chưa có kết quả</div>
-                                )}
-                            </div>
-                        </div>
-                    </section>
-                </main>
-            )}
-            
-            {/* --- BREAST LIFT TAB --- */}
-            {activeTab === 'breast-lift' && (
-                <main className="workflow-container">
-                    <button className="btn btn-secondary" onClick={() => setActiveTab('try-on')} style={{alignSelf: 'flex-start', marginBottom: '1rem'}}>← Quay lại Try-On</button>
-                    <section className="step-card full-width">
-                         <h2><span className="step-number">👙</span> AI Nâng Ngực (Body Enhancer)</h2>
-                         <div className="dual-upload-container" style={{alignItems: 'start'}}>
-                            <div className="upload-box">
-                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Ảnh Gốc</h3>
-                                <ImageUploader image={breastLiftInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setBreastLiftInputImage, setBreastLiftResultImage)} onRemove={()=>{setBreastLiftInputImage(null); setBreastLiftResultImage(null)}}><p>Tải ảnh để nâng ngực</p></ImageUploader>
-                                {breastLiftInputImage && !isLiftingBreast && !breastLiftResultImage && (
-                                     <button className="btn btn-primary" style={{width: '100%', marginTop: '10px'}} onClick={() => processBreastLift(breastLiftInputImage)}>Bắt đầu Nâng Ngực</button>
-                                )}
-                            </div>
-                            <div className="upload-box">
-                                <h3 style={{color: '#a1a1aa', marginBottom: '10px', fontSize: '1rem'}}>Kết Quả</h3>
-                                {isLiftingBreast ? (
-                                    <div style={{textAlign: 'center', padding: '40px', background:'#252525', borderRadius:'10px'}}>
-                                        <div className="spinner"></div>
-                                        <p style={{marginTop: '15px', color: '#888'}}>Đang chỉnh sửa hình thể...</p>
-                                    </div>
-                                ) : breastLiftResultImage ? (
-                                    <div>
-                                        <img src={breastLiftResultImage} style={{width: '100%', borderRadius: '8px'}} alt="Lifted" />
-                                        <div style={{marginTop: '15px', display: 'flex', gap: '10px', justifyContent: 'center'}}>
-                                            <a href={breastLiftResultImage} download="body-lift-result.png" className="btn btn-primary" style={{textDecoration: 'none'}}>💾 Tải về</a>
-                                            <button className="btn btn-secondary" onClick={() => {
-                                                    const newImage = breastLiftResultImage;
-                                                    setBreastLiftInputImage(newImage);
-                                                    setBreastLiftResultImage(null);
-                                                    processBreastLift(newImage);
-                                            }}>🔄 Nâng tiếp</button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div style={{padding: '40px', textAlign: 'center', color: '#666', background:'#252525', borderRadius:'10px', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>Chưa có kết quả</div>
-                                )}
-                            </div>
-                        </div>
-                    </section>
-                </main>
-            )}
+             {/* ================= FIX SKIN / BREAST LIFT TAB ================= */}
+             {(activeTab === 'fix-skin' || activeTab === 'breast-lift') && (
+                 <main className="workflow-container">
+                     <button className="btn btn-secondary" style={{width:'fit-content', marginBottom:'10px'}} onClick={() => setActiveTab('try-on')}>← Quay lại Try-On</button>
 
-            {/* --- AI INFLUENCER TAB --- */}
-            {activeTab === 'ai-influencer' && (
+                     <div className="vip-card">
+                         <div className="vip-card-header">
+                             {activeTab === 'fix-skin' ? (
+                                 <><span style={{fontSize:'1.5rem'}}>✨</span><h3 className="vip-card-title">Fix Da Nhựa (Skin Enhancer)</h3></>
+                             ) : (
+                                 <><span style={{fontSize:'1.5rem'}}>👙</span><h3 className="vip-card-title">AI Nâng Ngực (Body Enhancer)</h3></>
+                             )}
+                         </div>
+
+                         <div className="compare-container">
+                             <div className="compare-box">
+                                 <h4>Ảnh Gốc</h4>
+                                 <div className="compare-img-area">
+                                     {activeTab === 'fix-skin' ? (
+                                         <ImageUploader image={skinFixInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setSkinFixInputImage, setSkinFixResultImage)} onRemove={()=>{setSkinFixInputImage(null); setSkinFixResultImage(null)}} />
+                                     ) : (
+                                         <ImageUploader image={breastLiftInputImage} onImageSelect={(e) => handleLocalImageUpload(e, setBreastLiftInputImage, setBreastLiftResultImage)} onRemove={()=>{setBreastLiftInputImage(null); setBreastLiftResultImage(null)}} />
+                                     )}
+                                 </div>
+                             </div>
+                             <div className="compare-box">
+                                 <h4>Kết Quả</h4>
+                                 <div className="compare-img-area" style={{borderStyle:'solid', borderColor:'#333'}}>
+                                     {(activeTab === 'fix-skin' ? isFixingSkin : isLiftingBreast) ? (
+                                         <div className="spinner"></div>
+                                     ) : (activeTab === 'fix-skin' ? skinFixResultImage : breastLiftResultImage) ? (
+                                         <img src={activeTab === 'fix-skin' ? skinFixResultImage! : breastLiftResultImage!} />
+                                     ) : (
+                                         <span className="result-placeholder">Chưa có kết quả</span>
+                                     )}
+                                 </div>
+                                  {(activeTab === 'fix-skin' ? skinFixResultImage : breastLiftResultImage) && (
+                                     <div style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+                                         <button className="btn-download" style={{marginTop: 0, flex: 1}} onClick={() => handleDownload((activeTab === 'fix-skin' ? skinFixResultImage : breastLiftResultImage)!, 'Enhanced_Result')}>
+                                            ⬇️ Download 4K PNG
+                                         </button>
+                                         {activeTab === 'fix-skin' && (
+                                             <button className="btn btn-pink-glow" style={{flex: 1, borderRadius: '8px', fontSize:'0.95rem', fontWeight:600}} onClick={() => handleTransferToBreastLift(skinFixResultImage!)}>
+                                                 👙 Nâng ngực ngay
+                                             </button>
+                                         )}
+                                     </div>
+                                  )}
+                             </div>
+                         </div>
+                         
+                         {activeTab === 'fix-skin' ? (
+                             <button 
+                                className="vip-action-btn btn-purple-glow" 
+                                onClick={() => skinFixInputImage && processSkinFix(skinFixInputImage)}
+                                disabled={isFixingSkin || !skinFixInputImage}
+                             >
+                                 {isFixingSkin ? <><div className="spinner"></div> Đang xử lý...</> : 'Bắt đầu Fix Da'}
+                             </button>
+                         ) : (
+                             <button 
+                                className="vip-action-btn btn-pink-glow" 
+                                onClick={() => breastLiftInputImage && processBreastLift(breastLiftInputImage)}
+                                disabled={isLiftingBreast || !breastLiftInputImage}
+                             >
+                                 {isLiftingBreast ? <><div className="spinner"></div> Đang xử lý...</> : 'Bắt đầu Nâng Ngực'}
+                             </button>
+                         )}
+                     </div>
+                 </main>
+             )}
+
+             {/* ================= INFLUENCER TAB ================= */}
+             {activeTab === 'ai-influencer' && (
                 <div className="workflow-container">
-                    <div style={{display: 'flex', justifyContent: 'flex-end', marginBottom: '10px'}}>
-                         <button 
-                            className="btn" 
-                            style={{background: '#333', color: '#fff', fontSize: '0.9rem', padding: '8px 16px', border: '1px solid #444'}}
-                            onClick={randomizeInfluencer}
-                        >
-                            🎲 Ngẫu nhiên hóa (Random)
-                        </button>
+                     <div style={{display: 'flex', justifyContent: 'flex-end', marginBottom: '20px', gap: '10px'}}>
+                         {influencerHistory.length > 0 && <button className="btn btn-secondary" onClick={undoRandomize}>↩️ Hoàn tác</button>}
+                         <button className="btn btn-secondary" onClick={randomizeInfluencer}>🎲 Ngẫu nhiên</button>
                     </div>
 
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">1</span> Thiết Kế Nhân Vật</h2>
-                        
-                        <div className="influencer-form-group">
-                            <div className="form-row">
-                                <div className="form-item">
-                                    <label className="form-label">Giới tính</label>
-                                    <select 
-                                        className="form-select"
-                                        value={influencerSettings.gender}
-                                        onChange={(e) => handleInfluencerSettingChange('gender', e.target.value)}
-                                    >
-                                        {INFLUENCER_DATA.genders.map((opt, i) => (
-                                            <option key={i} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-item">
-                                    <label className="form-label">Độ tuổi</label>
-                                    <select 
-                                        className="form-select"
-                                        value={influencerSettings.age}
-                                        onChange={(e) => handleInfluencerSettingChange('age', e.target.value)}
-                                    >
-                                        {INFLUENCER_DATA.ages.map((opt, i) => (
-                                            <option key={i} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-item">
-                                    <label className="form-label">Sắc tộc / Xuất xứ</label>
-                                    <select 
-                                        className="form-select"
-                                        value={influencerSettings.ethnicity}
-                                        onChange={(e) => handleInfluencerSettingChange('ethnicity', e.target.value)}
-                                    >
-                                        {INFLUENCER_DATA.ethnicities.map((opt, i) => (
-                                            <option key={i} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div className="form-row">
-                                <div className="form-item">
-                                    <label className="form-label">Dáng người</label>
-                                    <select 
-                                        className="form-select"
-                                        value={influencerSettings.bodyType}
-                                        onChange={(e) => handleInfluencerSettingChange('bodyType', e.target.value)}
-                                    >
-                                        {INFLUENCER_DATA.bodyTypes.map((opt, i) => (
-                                            <option key={i} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="form-item">
-                                    <label className="form-label">Màu mắt</label>
-                                    <select 
-                                        className="form-select"
-                                        value={influencerSettings.eyes}
-                                        onChange={(e) => handleInfluencerSettingChange('eyes', e.target.value)}
-                                    >
-                                        {INFLUENCER_DATA.eyes.map((opt, i) => (
-                                            <option key={i} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            {/* HAIR BUILDER SECTION */}
-                            <div style={{background: '#1a1a1a', padding: '15px', borderRadius: '8px', border: '1px solid #333'}}>
-                                <label className="form-label" style={{color: '#f59e0b', marginBottom: '10px'}}>Thiết kế kiểu tóc</label>
-                                <div className="form-row" style={{marginBottom: '10px'}}>
-                                    <div className="form-item">
-                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.length} onChange={(e) => updateHairFromBuilder({length: e.target.value})}>
-                                            {INFLUENCER_DATA.hairOptions.lengths.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="form-item">
-                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.color} onChange={(e) => updateHairFromBuilder({color: e.target.value})}>
-                                            {INFLUENCER_DATA.hairOptions.colors.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="form-item">
-                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.texture} onChange={(e) => updateHairFromBuilder({texture: e.target.value})}>
-                                            {INFLUENCER_DATA.hairOptions.textures.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="form-item">
-                                        <select className="form-select" style={{fontSize: '0.85rem'}} value={hairBuilder.bangs} onChange={(e) => updateHairFromBuilder({bangs: e.target.value})}>
-                                            {INFLUENCER_DATA.hairOptions.bangs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                    </div>
-                                </div>
-                                
-                                <div className="form-row">
-                                    <div className="form-item" style={{flex: 2}}>
-                                         <input 
-                                            type="text" 
-                                            className="form-input" 
-                                            value={influencerSettings.hair}
-                                            onChange={(e) => handleInfluencerSettingChange('hair', e.target.value)}
-                                            placeholder="Mô tả tóc chi tiết (tiếng Anh hoặc Việt)..."
-                                        />
-                                    </div>
-                                    <div className="form-item" style={{flex: 1}}>
-                                        <select 
-                                            className="form-select" 
-                                            onChange={(e) => {
-                                                if(e.target.value) handleInfluencerSettingChange('hair', e.target.value);
-                                            }}
-                                            value=""
-                                        >
-                                            <option value="" disabled>Chọn Mẫu Tóc...</option>
-                                            {INFLUENCER_DATA.hairOptions.presets.map((p, i) => (
-                                                <option key={i} value={p.value}>{p.label}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
+                    <div className="vip-card">
+                        <div className="vip-card-header">
+                            <div className="vip-step-badge">1</div>
+                            <h3 className="vip-card-title">Thiết Kế Nhân Vật</h3>
                         </div>
-                    </section>
-
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">2</span> Phong Cách & Bối Cảnh</h2>
-                        <div className="influencer-form-group">
-                            <div className="form-item">
-                                <label className="form-label">Phong cách thời trang</label>
-                                <select 
-                                    className="form-select"
-                                    value={influencerSettings.style}
-                                    onChange={(e) => handleInfluencerSettingChange('style', e.target.value)}
-                                >
-                                    {INFLUENCER_DATA.styles.map((opt, i) => (
-                                        <option key={i} value={opt.value}>{opt.label}</option>
-                                    ))}
+                        
+                        <div className="vip-form-grid-3">
+                            <div className="vip-form-group">
+                                <label className="vip-label">Giới tính</label>
+                                <select className="vip-select" value={influencerSettings.gender} onChange={(e) => handleInfluencerSettingChange('gender', e.target.value)}>
+                                    {INFLUENCER_DATA.genders.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
                                 </select>
                             </div>
-                            
-                            <div className="form-item">
-                                <label className="form-label">Bối cảnh / Hoạt động</label>
-                                <div className="form-row" style={{marginBottom: '10px'}}>
-                                    <select 
-                                        className="form-select"
-                                        onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)}
-                                        value=""
-                                    >
-                                        <option value="" disabled>Chọn bối cảnh mẫu...</option>
-                                        {Object.entries(INFLUENCER_DATA.scenarios).map(([category, options]) => (
-                                            <optgroup key={category} label={category}>
-                                                {options.map((opt, i) => (
-                                                    <option key={i} value={opt.value}>{opt.label}</option>
-                                                ))}
-                                            </optgroup>
-                                        ))}
-                                    </select>
-                                </div>
-                                <textarea 
-                                    className="form-textarea" 
-                                    value={influencerSettings.scenario}
-                                    onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)}
-                                    placeholder="Hoặc tự mô tả chi tiết bối cảnh..."
-                                />
+                            <div className="vip-form-group">
+                                <label className="vip-label">Độ tuổi</label>
+                                <select className="vip-select" value={influencerSettings.age} onChange={(e) => handleInfluencerSettingChange('age', e.target.value)}>
+                                    {INFLUENCER_DATA.ages.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
                             </div>
-                            
-                            <div className="form-item">
-                                <label className="form-label">Tỉ lệ khung hình</label>
-                                <div className="aspect-ratio-selector">
-                                    <button 
-                                        className={`option-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`}
-                                        onClick={() => setAspectRatio('9:16')}
-                                    >
-                                        📱 Dọc (9:16)
-                                    </button>
-                                    <button 
-                                        className={`option-btn ${generationSettings.aspectRatio === '16:9' ? 'active' : ''}`}
-                                        onClick={() => setAspectRatio('16:9')}
-                                    >
-                                        💻 Ngang (16:9)
-                                    </button>
-                                     <button 
-                                        className={`option-btn ${generationSettings.aspectRatio === '1:1' ? 'active' : ''}`}
-                                        onClick={() => setAspectRatio('1:1')}
-                                    >
-                                        ⏹ Vuông (1:1)
-                                    </button>
-                                </div>
+                             <div className="vip-form-group">
+                                <label className="vip-label">Sắc tộc</label>
+                                <select className="vip-select" value={influencerSettings.ethnicity} onChange={(e) => handleInfluencerSettingChange('ethnicity', e.target.value)}>
+                                    {INFLUENCER_DATA.ethnicities.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
                             </div>
                         </div>
-                    </section>
 
-                    <section className="step-card full-width">
-                        <h2><span className="step-number">3</span> Tạo Influencer</h2>
+                         <div className="vip-form-grid-3">
+                            <div className="vip-form-group">
+                                <label className="vip-label">Dáng người</label>
+                                <select className="vip-select" value={influencerSettings.bodyType} onChange={(e) => handleInfluencerSettingChange('bodyType', e.target.value)}>
+                                    {INFLUENCER_DATA.bodyTypes.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                             <div className="vip-form-group">
+                                <label className="vip-label">Màu da</label>
+                                <select className="vip-select" value={influencerSettings.skinTone} onChange={(e) => handleInfluencerSettingChange('skinTone', e.target.value)}>
+                                    {INFLUENCER_DATA.skinTones.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                             <div className="vip-form-group">
+                                <label className="vip-label">Màu mắt</label>
+                                <select className="vip-select" value={influencerSettings.eyes} onChange={(e) => handleInfluencerSettingChange('eyes', e.target.value)}>
+                                    {INFLUENCER_DATA.eyes.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Reference Image Section */}
+                        <div style={{marginTop: '20px', borderTop: '1px solid #333', paddingTop: '20px'}}>
+                             <label className="vip-label" style={{color: '#f59e0b', fontSize:'1rem'}}>📸 Ảnh tham chiếu (Tùy chọn)</label>
+                             <div className="vip-grid-container" style={{gridTemplateColumns: '1fr 2fr', marginTop:'15px'}}>
+                                <ImageUploader image={influencerRefPreview} onImageSelect={(e) => handleFileChange(e, setInfluencerRefFile, setInfluencerRefPreview)} onRemove={() => { setInfluencerRefFile(null); setInfluencerRefPreview(null); }}>
+                                    <p style={{color:'#666', fontSize: '0.8rem'}}>Upload ảnh mẫu</p>
+                                </ImageUploader>
+                                <div>
+                                    <label className="vip-label">AI nên lấy đặc điểm gì?</label>
+                                    <div className="vip-grid-container" style={{gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: 0}}>
+                                        <button className={`vip-toggle-btn ${influencerRefOptions.style ? 'active-orange' : ''}`} onClick={() => toggleInfluencerRefOption('style')} disabled={!influencerRefFile}>🎨 Phong cách {influencerRefOptions.style && '✓'}</button>
+                                        <button className={`vip-toggle-btn ${influencerRefOptions.face ? 'active-orange' : ''}`} onClick={() => toggleInfluencerRefOption('face')} disabled={!influencerRefFile}>👤 Khuôn mặt {influencerRefOptions.face && '✓'}</button>
+                                        <button className={`vip-toggle-btn ${influencerRefOptions.body ? 'active-orange' : ''}`} onClick={() => toggleInfluencerRefOption('body')} disabled={!influencerRefFile}>💃 Dáng / Pose {influencerRefOptions.body && '✓'}</button>
+                                        <button className={`vip-toggle-btn ${influencerRefOptions.outfit ? 'active-orange' : ''}`} onClick={() => toggleInfluencerRefOption('outfit')} disabled={!influencerRefFile}>👗 Trang phục {influencerRefOptions.outfit && '✓'}</button>
+                                    </div>
+                                </div>
+                             </div>
+                        </div>
+
+                        {/* Hair Section */}
+                         <div style={{marginTop: '20px', background: '#151515', padding: '15px', borderRadius: '8px', border:'1px dashed #333'}}>
+                            <label className="vip-label" style={{color: '#ec4899', fontSize:'1rem', marginBottom:'15px'}}>Thiết kế kiểu tóc</label>
+                            <div className="vip-form-grid-4" style={{marginBottom: '15px'}}>
+                                 <select className="vip-select" value={hairBuilder.length} onChange={(e) => updateHairFromBuilder({length: e.target.value})}>{INFLUENCER_DATA.hairOptions.lengths.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                                 <select className="vip-select" value={hairBuilder.color} onChange={(e) => updateHairFromBuilder({color: e.target.value})}>{INFLUENCER_DATA.hairOptions.colors.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                                 <select className="vip-select" value={hairBuilder.texture} onChange={(e) => updateHairFromBuilder({texture: e.target.value})}>{INFLUENCER_DATA.hairOptions.textures.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                                 <select className="vip-select" value={hairBuilder.bangs} onChange={(e) => updateHairFromBuilder({bangs: e.target.value})}>{INFLUENCER_DATA.hairOptions.bangs.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+                            </div>
+                            <input type="text" className="vip-input" value={influencerSettings.hair} onChange={(e) => handleInfluencerSettingChange('hair', e.target.value)} placeholder="Mô tả tóc chi tiết..." />
+                        </div>
+                    </div>
+
+                    <div className="vip-card">
+                        <div className="vip-card-header">
+                            <div className="vip-step-badge">2</div>
+                            <h3 className="vip-card-title">Phong Cách & Bối Cảnh</h3>
+                        </div>
+                         <div className="vip-form-grid-2">
+                            <div className="vip-form-group">
+                                <label className="vip-label">Phong cách</label>
+                                <select className="vip-select" value={influencerSettings.style} onChange={(e) => handleInfluencerSettingChange('style', e.target.value)}>
+                                    {INFLUENCER_DATA.styles.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}
+                                </select>
+                            </div>
+                             <div className="vip-form-group">
+                                <label className="vip-label">Bối cảnh</label>
+                                <select className="vip-select" onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)} value="">
+                                    <option value="" disabled>Chọn bối cảnh mẫu...</option>
+                                    {Object.entries(INFLUENCER_DATA.scenarios).map(([category, options]) => (<optgroup key={category} label={category}>{options.map((opt, i) => (<option key={i} value={opt.value}>{opt.label}</option>))}</optgroup>))}
+                                </select>
+                            </div>
+                         </div>
+                         <div className="vip-form-group">
+                             <textarea className="vip-textarea" value={influencerSettings.scenario} onChange={(e) => handleInfluencerSettingChange('scenario', e.target.value)} placeholder="Mô tả chi tiết bối cảnh..."></textarea>
+                         </div>
+                         <div className="vip-form-group">
+                            <label className="vip-label">Tỉ lệ khung hình</label>
+                            <div className="vip-toggle-row" style={{maxWidth: '300px'}}>
+                                <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 Dọc (9:16)</button>
+                                <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 Ngang (16:9)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="vip-footer-card">
                          <button 
-                            className="btn btn-primary start-btn" 
-                            style={{background: 'linear-gradient(135deg, #f59e0b, #d97706)'}}
+                            className="vip-action-btn btn-orange-glow" 
                             onClick={handleCreateInfluencer} 
                             disabled={isCreatingInfluencer}
                         >
-                            🌟 {isCreatingInfluencer ? 'Đang tạo nhân vật...' : 'Tạo AI Influencer'}
+                            {isCreatingInfluencer ? <><div className="spinner"></div> Đang tạo ảnh...</> : '🌟 Tạo Influencer'}
                         </button>
-                    </section>
+                    </div>
 
                     {(influencerResultImage || isCreatingInfluencer) && (
-                        <section className="step-card full-width">
-                            <h2><span className="step-number">✨</span> Kết Quả</h2>
-                            <div style={{ minHeight: '300px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                                {isCreatingInfluencer ? (
-                                    <div style={{textAlign: 'center'}}>
-                                        <div className="spinner" style={{borderLeftColor: '#f59e0b'}}></div>
-                                        <p style={{ marginTop: '15px', color: '#a1a1aa' }}>Đang vẽ nhân vật ảo...</p>
-                                    </div>
-                                ) : (
-                                    influencerResultImage && (
-                                        <div style={{ width: '100%', textAlign: 'center' }}>
-                                            <img src={influencerResultImage} alt="Influencer Result" style={{ maxWidth: '100%', maxHeight: '600px', borderRadius: '8px', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.2)' }} />
-                                            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'center' }}>
-                                                <a href={influencerResultImage} download={getDownloadFileName('ai-influencer')} className="btn btn-primary" style={{textDecoration: 'none', background: '#f59e0b'}}>💾 Tải về</a>
-                                                <button className="btn btn-secondary" onClick={() => setInfluencerResultImage(null)}>🔄 Tạo lại</button>
-                                                <button 
-                                                    className="btn" 
-                                                    style={{ background: '#3b82f6', color: 'white' }}
-                                                    onClick={() => {
-                                                        setModelPreview(influencerResultImage);
-                                                        fetch(influencerResultImage)
-                                                            .then(res => res.blob())
-                                                            .then(blob => {
-                                                                const file = new File([blob], "ai-influencer.png", { type: "image/png" });
-                                                                setModelFile(file);
-                                                                setActiveTab('try-on');
-                                                            });
-                                                    }}
-                                                >
-                                                    👗 Dùng làm Mẫu Try-On
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )
-                                )}
+                        <div className="vip-card">
+                            <div className="vip-card-header"><h3 className="vip-card-title">Kết quả</h3></div>
+                            <div className="compare-img-area" style={{height:'auto', minHeight:'300px', background:'#151515'}}>
+                                 {isCreatingInfluencer ? <div className="spinner"></div> : influencerResultImage && <img src={influencerResultImage} style={{maxWidth:'100%', borderRadius:'8px'}}/>}
                             </div>
-                        </section>
+                            {influencerResultImage && (
+                                <div style={{textAlign:'center'}}>
+                                    <button className="btn-download" onClick={() => handleDownload(influencerResultImage!, 'Influencer_Result')}>
+                                        ⬇️ Download 4K PNG
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             )}
