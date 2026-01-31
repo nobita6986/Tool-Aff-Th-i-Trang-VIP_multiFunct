@@ -308,12 +308,18 @@ const EXPRESSION_OPTIONS: { id: Expression; label: string; icon: string }[] = [
     { id: 'pout', label: 'Dỗi', icon: '🥺' },
 ];
 
+const VIDEO_MODELS = [
+    { value: 'veo-3.1-generate-preview', label: 'Veo 3.1 Pro (High Quality - 1080p Ready)' },
+    { value: 'veo-3.1-fast-generate-preview', label: 'Veo 3.1 Fast (Preview Speed)' }
+];
+
 // --- RECOMMENDED MODELS ---
 const RECOMMENDED_MODELS = [
-    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Khuyên dùng)' },
-    { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Chất lượng cao)' },
-    { value: 'veo-3.1-generate-preview', label: 'Veo 3.1 (Tạo Video)' },
-    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Backup)' }
+    { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Tốc độ cao - Nano Banana)' },
+    { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Chất lượng cao - Nano Banana Pro)' },
+    { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Đa năng - Text/Code)' },
+    { value: 'veo-3.1-generate-preview', label: 'Veo 3.1 Pro (Video HQ)' },
+    { value: 'veo-3.1-fast-generate-preview', label: 'Veo 3.1 Fast (Video Fast)' }
 ];
 
 const App = () => {
@@ -377,6 +383,8 @@ const App = () => {
     const [videoResultUrl, setVideoResultUrl] = useState<string | null>(null);
     const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
     const [videoProgress, setVideoProgress] = useState<string>('');
+    const [videoModel, setVideoModel] = useState('veo-3.1-fast-generate-preview'); 
+    const [videoResolution, setVideoResolution] = useState<'720p' | '1080p'>('720p');
 
 
     // AI Influencer Mode State (Unchanged functionality)
@@ -779,9 +787,14 @@ const App = () => {
         } catch (err: any) { setError("Lỗi đổi nền: " + err.message); } finally { setIsChangingBg(false); }
     };
 
-    const handleGenerateVideo = async () => {
+    const handleGenerateVideo = async (overrideModel?: string, overrideRes?: string) => {
         if (!videoPrompt.trim()) { alert("Vui lòng nhập mô tả video."); return; }
-        setIsGeneratingVideo(true); setVideoResultUrl(null); setError(null); setVideoProgress('Đang gửi yêu cầu...');
+        setIsGeneratingVideo(true); 
+        // Only reset result if we are NOT upscaling
+        if (!overrideModel) setVideoResultUrl(null); 
+        
+        setError(null); 
+        setVideoProgress('Đang gửi yêu cầu...');
         
         try {
             const providerKeys = apiKeys.gemini;
@@ -795,20 +808,24 @@ const App = () => {
                 imagePart = { imageBytes: b64, mimeType: videoInputFile.type };
             }
 
+            const modelToUse = overrideModel || videoModel;
+            const resToUse = overrideRes || videoResolution;
+
+            setVideoProgress(`Đang tạo video (${modelToUse.includes('fast') ? 'Fast' : 'Pro'} - ${resToUse})...`);
+
             // Veo Generation Call
             let operation = await ai.models.generateVideos({
-                model: 'veo-3.1-generate-preview',
+                model: modelToUse, 
                 prompt: videoPrompt,
                 image: imagePart,
                 config: {
                     numberOfVideos: 1,
-                    resolution: '720p',
+                    resolution: resToUse as '720p' | '1080p',
                     aspectRatio: generationSettings.aspectRatio
                 }
             });
 
             // Polling Loop
-            setVideoProgress('Đang tạo video (Veo)... quá trình này mất khoảng 1-2 phút.');
             while (!operation.done) {
                 await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
                 operation = await ai.operations.getVideosOperation({operation: operation});
@@ -830,8 +847,13 @@ const App = () => {
             setVideoResultUrl(videoUrl);
 
         } catch (err: any) {
-            setError("Lỗi tạo video: " + err.message);
-            if(err.message.includes('Billing')) setError("Lỗi Billing: Tính năng Video yêu cầu API Key của dự án có trả phí (Pay-as-you-go).");
+            let msg = err.message;
+            if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+                msg = `Lỗi 403 (Permission Denied): Model chưa được cấp quyền. Hãy thử chuyển sang model 'Veo Fast' hoặc kiểm tra quyền truy cập.`;
+            } else if (msg.includes('Billing')) {
+                msg = "Lỗi Billing: Tính năng Video yêu cầu API Key của dự án có trả phí (Pay-as-you-go).";
+            }
+            setError(msg);
         } finally {
             setIsGeneratingVideo(false);
             setVideoProgress('');
@@ -1339,6 +1361,22 @@ const App = () => {
                             {/* Prompt & Config */}
                             <div>
                                 <div className="vip-form-group">
+                                    <label className="vip-label">Chọn Model:</label>
+                                    <select 
+                                        className="vip-select" 
+                                        value={videoModel} 
+                                        onChange={(e) => setVideoModel(e.target.value)}
+                                    >
+                                        {VIDEO_MODELS.map(m => (
+                                            <option key={m.value} value={m.value}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                    <div style={{fontSize:'0.8rem', color:'#aaa', marginTop:'5px'}}>
+                                        *Nếu gặp lỗi 403, hãy thử chuyển sang model Fast.
+                                    </div>
+                                </div>
+
+                                <div className="vip-form-group">
                                     <label className="vip-label">Mô tả video (Prompt):</label>
                                     <textarea 
                                         className="vip-textarea" 
@@ -1349,10 +1387,16 @@ const App = () => {
                                     />
                                 </div>
                                 <div className="vip-form-group">
-                                    <label className="vip-label">Tỉ lệ khung hình:</label>
-                                    <div className="vip-toggle-row">
-                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 Dọc (9:16)</button>
-                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 Ngang (16:9)</button>
+                                    <label className="vip-label">Cấu hình video:</label>
+                                    <div style={{display:'flex', gap:'10px', flexDirection:'column'}}>
+                                        <div className="vip-toggle-row">
+                                            <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 Dọc (9:16)</button>
+                                            <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 Ngang (16:9)</button>
+                                        </div>
+                                        <div className="vip-toggle-row">
+                                            <button className={`vip-toggle-btn ${videoResolution === '720p' ? 'active' : ''}`} onClick={() => setVideoResolution('720p')}>SD 720p</button>
+                                            <button className={`vip-toggle-btn ${videoResolution === '1080p' ? 'active-orange' : ''}`} onClick={() => setVideoResolution('1080p')}>HD 1080p</button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div style={{fontSize:'0.8rem', color:'#f59e0b', marginTop:'10px', background:'#2a1a00', padding:'10px', borderRadius:'6px'}}>
@@ -1369,7 +1413,7 @@ const App = () => {
                          </div>
                         <button 
                             className="vip-action-btn btn-blue-glow" 
-                            onClick={handleGenerateVideo} 
+                            onClick={() => handleGenerateVideo()} 
                             disabled={isGeneratingVideo || !videoPrompt}
                         >
                             {isGeneratingVideo ? '🎥 Đang render video...' : '🎬 Tạo Video Ngay'}
@@ -1382,10 +1426,19 @@ const App = () => {
                                 <h3 className="vip-card-title">Kết Quả Video</h3>
                             </div>
                             <video controls src={videoResultUrl} style={{width:'100%', maxHeight:'500px', borderRadius:'8px', display:'block', margin:'0 auto', background:'#000'}} />
-                            <div style={{textAlign:'center', marginTop:'15px'}}>
-                                <a href={videoResultUrl} download={`Veo_Video_${Date.now()}.mp4`} className="btn-download" style={{textDecoration:'none'}}>
+                            <div style={{textAlign:'center', marginTop:'15px', display:'flex', gap:'10px', justifyContent:'center'}}>
+                                <a href={videoResultUrl} download={`Veo_Video_${Date.now()}.mp4`} className="btn-download" style={{textDecoration:'none', flex: 1, maxWidth:'200px'}}>
                                     ⬇️ Download MP4
                                 </a>
+                                {videoResolution === '720p' && !isGeneratingVideo && (
+                                    <button 
+                                        className="btn btn-primary" 
+                                        style={{flex: 1, maxWidth:'200px', background: 'linear-gradient(45deg, #FFD700, #DAA520)', color:'#000', fontWeight:'bold', border:'none'}}
+                                        onClick={() => handleGenerateVideo('veo-3.1-generate-preview', '1080p')}
+                                    >
+                                        ✨ Upscale lên 1080p
+                                    </button>
+                                )}
                             </div>
                         </div>
                      )}
