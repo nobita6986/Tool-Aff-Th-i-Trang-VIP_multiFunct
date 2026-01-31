@@ -312,6 +312,7 @@ const EXPRESSION_OPTIONS: { id: Expression; label: string; icon: string }[] = [
 const RECOMMENDED_MODELS = [
     { value: 'gemini-2.5-flash-image', label: 'Gemini 2.5 Flash Image (Khuyên dùng)' },
     { value: 'gemini-3-pro-image-preview', label: 'Gemini 3 Pro Image (Chất lượng cao)' },
+    { value: 'veo-3.1-generate-preview', label: 'Veo 3.1 (Tạo Video)' },
     { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Backup)' }
 ];
 
@@ -368,6 +369,14 @@ const App = () => {
     const [bgSelectedPreset, setBgSelectedPreset] = useState<string>('');
     const [bgResultImage, setBgResultImage] = useState<string | null>(null);
     const [isChangingBg, setIsChangingBg] = useState(false);
+
+    // Create Video (Veo) Mode State
+    const [videoPrompt, setVideoPrompt] = useState('');
+    const [videoInputFile, setVideoInputFile] = useState<File | null>(null);
+    const [videoInputPreview, setVideoInputPreview] = useState<string | null>(null);
+    const [videoResultUrl, setVideoResultUrl] = useState<string | null>(null);
+    const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+    const [videoProgress, setVideoProgress] = useState<string>('');
 
 
     // AI Influencer Mode State (Unchanged functionality)
@@ -770,6 +779,65 @@ const App = () => {
         } catch (err: any) { setError("Lỗi đổi nền: " + err.message); } finally { setIsChangingBg(false); }
     };
 
+    const handleGenerateVideo = async () => {
+        if (!videoPrompt.trim()) { alert("Vui lòng nhập mô tả video."); return; }
+        setIsGeneratingVideo(true); setVideoResultUrl(null); setError(null); setVideoProgress('Đang gửi yêu cầu...');
+        
+        try {
+            const providerKeys = apiKeys.gemini;
+            if (providerKeys.length === 0) throw new Error("Vui lòng nhập API Key cho Gemini.");
+            const apiKey = providerKeys[0]; // Veo calls are heavy, stick to one key or user's main key
+            const ai = new GoogleGenAI({ apiKey: apiKey });
+            
+            let imagePart = undefined;
+            if (videoInputFile) {
+                const b64 = await fileToBase64(videoInputFile);
+                imagePart = { imageBytes: b64, mimeType: videoInputFile.type };
+            }
+
+            // Veo Generation Call
+            let operation = await ai.models.generateVideos({
+                model: 'veo-3.1-generate-preview',
+                prompt: videoPrompt,
+                image: imagePart,
+                config: {
+                    numberOfVideos: 1,
+                    resolution: '720p',
+                    aspectRatio: generationSettings.aspectRatio
+                }
+            });
+
+            // Polling Loop
+            setVideoProgress('Đang tạo video (Veo)... quá trình này mất khoảng 1-2 phút.');
+            while (!operation.done) {
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+                operation = await ai.operations.getVideosOperation({operation: operation});
+                setVideoProgress('Đang xử lý...');
+            }
+
+            if (operation.error) throw new Error(operation.error.message || "Video generation failed");
+
+            const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+            if (!downloadLink) throw new Error("Không tìm thấy link video trong kết quả.");
+
+            // Fetch video blob
+            setVideoProgress('Đang tải video về...');
+            const response = await fetch(`${downloadLink}&key=${apiKey}`);
+            if (!response.ok) throw new Error("Failed to download video file.");
+            
+            const blob = await response.blob();
+            const videoUrl = URL.createObjectURL(blob);
+            setVideoResultUrl(videoUrl);
+
+        } catch (err: any) {
+            setError("Lỗi tạo video: " + err.message);
+            if(err.message.includes('Billing')) setError("Lỗi Billing: Tính năng Video yêu cầu API Key của dự án có trả phí (Pay-as-you-go).");
+        } finally {
+            setIsGeneratingVideo(false);
+            setVideoProgress('');
+        }
+    };
+
     const processSkinFix = async (imageSrc: string) => {
         setIsFixingSkin(true); setError(null); setSkinFixResultImage(null);
         try {
@@ -822,11 +890,12 @@ const App = () => {
                 </div>
                 <nav className="main-nav">
                     <button className={`nav-item nav-try-on ${activeTab === 'try-on' ? 'active' : ''}`} onClick={() => setActiveTab('try-on')}>👗 Virtual Try-On</button>
-                    <button className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`} onClick={() => setActiveTab('swap-face')}>🎭 Swap Face (Ghép Mặt)</button>
+                    <button className={`nav-item nav-swap-face ${activeTab === 'swap-face' ? 'active' : ''}`} onClick={() => setActiveTab('swap-face')}>🎭 Swap Face</button>
                     <button className={`nav-item ${activeTab === 'change-bg' ? 'active' : ''}`} style={{borderColor: '#f59e0b', color: activeTab === 'change-bg' ? '#fff' : '#f59e0b', background: activeTab === 'change-bg' ? '#f59e0b' : 'transparent'}} onClick={() => setActiveTab('change-bg')}>🌄 Đổi Bối Cảnh</button>
-                    <button className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`} onClick={() => setActiveTab('fix-skin')}>✨ Fix Da Nhựa</button>
-                    <button className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`} onClick={() => setActiveTab('breast-lift')}>👙 AI Nâng Ngực</button>
-                    <button className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`} onClick={() => setActiveTab('ai-influencer')}>🌟 Create AI Influencer</button>
+                    <button className={`nav-item ${activeTab === 'create-video' ? 'active' : ''}`} style={{borderColor: '#ef4444', color: activeTab === 'create-video' ? '#fff' : '#ef4444', background: activeTab === 'create-video' ? '#ef4444' : 'transparent'}} onClick={() => setActiveTab('create-video')}>🎬 Tạo Video (Veo)</button>
+                    <button className={`nav-item nav-fix-skin ${activeTab === 'fix-skin' ? 'active' : ''}`} onClick={() => setActiveTab('fix-skin')}>✨ Fix Da</button>
+                    <button className={`nav-item nav-breast-lift ${activeTab === 'breast-lift' ? 'active' : ''}`} onClick={() => setActiveTab('breast-lift')}>👙 Nâng Ngực</button>
+                    <button className={`nav-item nav-influencer ${activeTab === 'ai-influencer' ? 'active' : ''}`} onClick={() => setActiveTab('ai-influencer')}>🌟 Create Influencer</button>
                 </nav>
             </header>
 
@@ -1248,6 +1317,79 @@ const App = () => {
                         </div>
                     )}
                 </main>
+             )}
+
+             {/* ================= CREATE VIDEO (VEO) TAB ================= */}
+             {activeTab === 'create-video' && (
+                 <main className="workflow-container">
+                     <div className="vip-card">
+                         <div className="vip-card-header">
+                            <div className="vip-step-badge">1</div>
+                            <h3 className="vip-card-title">🎬 Tạo Video Chuyển Động (Veo)</h3>
+                        </div>
+
+                        <div className="vip-grid-container" style={{gridTemplateColumns: '1fr 1fr'}}>
+                             {/* Input Image */}
+                            <div>
+                                <ImageUploader label="Ảnh khởi đầu (Start Frame - Optional)" image={videoInputPreview} onImageSelect={(e) => handleFileChange(e, setVideoInputFile, setVideoInputPreview)} onRemove={()=>{setVideoInputFile(null); setVideoInputPreview(null)}}>
+                                    <p style={{color:'#666'}}>Tải ảnh để tạo chuyển động từ ảnh đó</p>
+                                </ImageUploader>
+                            </div>
+
+                            {/* Prompt & Config */}
+                            <div>
+                                <div className="vip-form-group">
+                                    <label className="vip-label">Mô tả video (Prompt):</label>
+                                    <textarea 
+                                        className="vip-textarea" 
+                                        value={videoPrompt} 
+                                        onChange={(e) => setVideoPrompt(e.target.value)} 
+                                        placeholder="Mô tả chi tiết chuyển động bạn muốn (Ví dụ: A cyberpunk city with flying cars, cinematic lighting...)"
+                                        style={{height: '120px'}}
+                                    />
+                                </div>
+                                <div className="vip-form-group">
+                                    <label className="vip-label">Tỉ lệ khung hình:</label>
+                                    <div className="vip-toggle-row">
+                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '9:16' ? 'active' : ''}`} onClick={() => setAspectRatio('9:16')}>📱 Dọc (9:16)</button>
+                                        <button className={`vip-toggle-btn ${generationSettings.aspectRatio === '16:9' ? 'active-blue' : ''}`} onClick={() => setAspectRatio('16:9')}>💻 Ngang (16:9)</button>
+                                    </div>
+                                </div>
+                                <div style={{fontSize:'0.8rem', color:'#f59e0b', marginTop:'10px', background:'#2a1a00', padding:'10px', borderRadius:'6px'}}>
+                                    ⚠️ Lưu ý: Tính năng này yêu cầu <strong>API Key có trả phí (Billing enabled)</strong>. Key miễn phí sẽ không hoạt động.
+                                </div>
+                            </div>
+                        </div>
+                     </div>
+
+                     <div className="vip-footer-card">
+                         <div className="vip-status-box" style={{color: '#fff'}}>
+                            {isGeneratingVideo && <div style={{textAlign:'center', padding:'10px'}}><div className="spinner"></div><br/>{videoProgress}</div>}
+                            {!isGeneratingVideo && "Sẵn sàng tạo video clip (~5-8 giây)"}
+                         </div>
+                        <button 
+                            className="vip-action-btn btn-blue-glow" 
+                            onClick={handleGenerateVideo} 
+                            disabled={isGeneratingVideo || !videoPrompt}
+                        >
+                            {isGeneratingVideo ? '🎥 Đang render video...' : '🎬 Tạo Video Ngay'}
+                        </button>
+                     </div>
+
+                     {videoResultUrl && (
+                        <div className="vip-card">
+                             <div className="vip-card-header">
+                                <h3 className="vip-card-title">Kết Quả Video</h3>
+                            </div>
+                            <video controls src={videoResultUrl} style={{width:'100%', maxHeight:'500px', borderRadius:'8px', display:'block', margin:'0 auto', background:'#000'}} />
+                            <div style={{textAlign:'center', marginTop:'15px'}}>
+                                <a href={videoResultUrl} download={`Veo_Video_${Date.now()}.mp4`} className="btn-download" style={{textDecoration:'none'}}>
+                                    ⬇️ Download MP4
+                                </a>
+                            </div>
+                        </div>
+                     )}
+                 </main>
              )}
 
              {/* ================= FIX SKIN / BREAST LIFT TAB ================= */}
