@@ -175,6 +175,29 @@ const BACKGROUND_PRESETS = [
     { label: 'Dưới nước', value: 'Underwater concept with blue water, bubbles, light rays from surface, ethereal dreamlike quality.' }
 ];
 
+const VIDEO_PROMPT_TEMPLATES = [
+    "Một video thời trang dài 8 giây, cô gái đứng giữa khung hình, mặc váy nhẹ nhàng, hai tay thả lỏng, xoay nhẹ thân người, ánh mắt nhìn camera tự tin, camera pan ngang mượt, ánh sáng mềm điện ảnh",
+    "Một video thời trang dài 8 giây, cô gái bước chậm về phía camera, váy chuyển động theo từng bước chân, gương mặt thư giãn, camera dolly-in nhẹ tạo cảm giác cao cấp",
+    "Một video thời trang dài 8 giây, cô gái đứng trước gương toàn thân, một tay cầm điện thoại, tay còn lại chạm nhẹ vạt váy, xoay nhẹ người, ánh mắt nhìn vào gương, camera trượt ngang",
+    "Một video thời trang dài 8 giây, cô gái đứng nghiêng 48 độ, tay đặt lên hông làm nổi bật form váy, quay đầu nhìn camera với nụ cười tinh tế, camera pan chậm, ánh sáng studio",
+    "Một video thời trang dài 8 giây, cô gái bước ngang khung hình, dừng lại giữa cảnh, váy bay nhẹ theo chuyển động, ánh mắt nhìn trực diện camera, camera theo chuyển động mượt",
+    "Một video thời trang dài 8 giây, cô gái đứng yên, khẽ xoay vai và thân trên để lộ chi tiết váy, ánh mắt dịu dàng nhìn camera, camera zoom nhẹ tạo chiều sâu",
+    "Một video thời trang dài 8 giây, cô gái đứng cạnh cửa sổ, ánh sáng tự nhiên chiếu vào, cô xoay nhẹ người, váy bắt sáng mềm mại, camera pan ngang phong cách cinematic",
+    "Một video thời trang dài 8 giây, cô gái quay lưng về phía camera, sau đó từ từ quay đầu lại, váy chuyển động nhẹ, ánh mắt chạm ống kính, camera di chuyển vòng cung",
+    "Một video thời trang dài 8 giây, cô gái bước xuống bậc thềm, váy rũ tự nhiên theo từng bước, quay đầu nhìn camera với nụ cười nhẹ, camera góc thấp tạo cảm giác thời trang",
+    "Một video thời trang dài 8 giây, cô gái đứng trước gương lớn, một tay đặt lên eo, tay còn lại thả lỏng, xoay nhẹ thân người, camera pan ngang làm nổi bật form dáng váy",
+    "Một video thời trang dài 8 giây, cô gái đứng giữa khung hình, gió nhẹ làm váy bay tự nhiên, ánh mắt nhìn camera bình thản, camera trượt ngang chậm",
+    "Một video thời trang dài 8 giây, cô gái nâng nhẹ vạt váy, xoay người nửa vòng, ánh mắt luôn hướng về camera, camera dolly theo chuyển động tạo cảm giác cao cấp",
+    "Một video thời trang dài 8 giây, cô gái bước một bước về phía trước, váy chuyển động mềm mại, dừng lại và nhìn camera tự tin, camera dolly-in mượt",
+    "Một video thời trang dài 8 giây, cô gái đứng nghiêng, tay chạm nhẹ vào chi tiết váy, đầu hơi nghiêng, nụ cười mỉm, camera zoom nhẹ nhấn mạnh sản phẩm",
+    "Một video thời trang dài 8 giây, cô gái quay nhẹ tại chỗ, váy xoay theo chuyển động, ánh mắt gặp camera ở cuối vòng xoay, camera theo vòng tròn mượt",
+    "Một video thời trang dài 8 giây, cô gái đứng cạnh lan can, một tay đặt lên lan can, tay kia thả lỏng, váy rũ tự nhiên, camera pan nhẹ kết hợp ánh sáng tự nhiên",
+    "Một video thời trang dài 8 giây, cô gái bước chéo khung hình, váy bay nhẹ, dừng lại và xoay mặt về camera, biểu cảm tự tin, camera theo chuyển động",
+    "Một video thời trang dài 8 giây, cô gái đứng yên, khẽ chỉnh lại vạt váy, sau đó nhìn lên camera với ánh mắt cuốn hút, camera tiến gần để nhấn chi tiết",
+    "Một video thời trang dài 8 giây, cô gái đứng giữa không gian tối giản, váy màu trung tính, xoay nhẹ thân trên, ánh mắt nhìn camera với thần thái model, camera pan mượt",
+    "Một video thời trang dài 8 giây, cô gái bước chậm về phía trước, váy chuyển động mềm theo từng bước, dừng lại giữa khung hình và mỉm cười nhẹ, camera dolly-in điện ảnh"
+];
+
 // --- UTILS ---
 const removeBackground = async (imageSrc: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -1356,6 +1379,21 @@ const App = () => {
                                 <ImageUploader label="Ảnh khởi đầu (Start Frame - Optional)" image={videoInputPreview} onImageSelect={(e) => handleFileChange(e, setVideoInputFile, setVideoInputPreview)} onRemove={()=>{setVideoInputFile(null); setVideoInputPreview(null)}}>
                                     <p style={{color:'#666'}}>Tải ảnh để tạo chuyển động từ ảnh đó</p>
                                 </ImageUploader>
+                                <div style={{marginTop: '15px'}}>
+                                    <label className="vip-label">🪄 Prompt Mẫu (Click để chọn):</label>
+                                    <div className="prompt-scroll-box">
+                                        {VIDEO_PROMPT_TEMPLATES.map((p, i) => (
+                                            <div 
+                                                key={i} 
+                                                className="prompt-item"
+                                                onClick={() => setVideoPrompt(p)}
+                                            >
+                                                <span style={{color: '#f59e0b', fontWeight: 'bold', marginRight: '5px'}}>{i+1}.</span>
+                                                {p}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Prompt & Config */}
