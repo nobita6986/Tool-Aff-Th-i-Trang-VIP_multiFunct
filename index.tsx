@@ -317,7 +317,6 @@ const handleDownload = (url: string, prefix: string) => {
     document.body.removeChild(link);
 };
 
-type Provider = 'gemini' | 'openai' | 'grok';
 type Expression = 'default' | 'happy' | 'serious' | 'surprised' | 'seductive' | 'angry' | 'sad' | 'pout';
 
 const EXPRESSION_OPTIONS: { id: Expression; label: string; icon: string }[] = [
@@ -347,24 +346,10 @@ const RECOMMENDED_MODELS = [
 
 const App = () => {
     // --- API MANAGEMENT STATE ---
-    const [apiKeys, setApiKeys] = useState<Record<Provider, string[]>>({
-        gemini: [],
-        openai: [],
-        grok: []
-    });
-    const [activeProvider, setActiveProvider] = useState<Provider>('gemini');
     const [modelName, setModelName] = useState('gemini-2.5-flash-image'); // Default per system instructions
-    const [tempKeyInput, setTempKeyInput] = useState('');
     const [showSettings, setShowSettings] = useState(false);
     const [showGuide, setShowGuide] = useState(false);
-    const [modalSelectedProvider, setModalSelectedProvider] = useState<Provider>('gemini');
     
-    const currentKeyIndices = useRef<Record<Provider, number>>({
-        gemini: 0,
-        openai: 0,
-        grok: 0
-    });
-
     // --- APP STATE ---
     const [activeTab, setActiveTab] = useState('try-on');
     const [tryOnMode, setTryOnMode] = useState<'full' | 'mix'>('full');
@@ -461,25 +446,7 @@ const App = () => {
 
     // --- INITIALIZATION ---
     useEffect(() => {
-        const storedKeys = localStorage.getItem('multi_provider_api_keys');
-        const storedActiveProvider = localStorage.getItem('active_provider') as Provider | null;
         const storedModelName = localStorage.getItem('gemini_model_name');
-
-        if (storedKeys) {
-            try {
-                const parsed = JSON.parse(storedKeys);
-                setApiKeys(prev => ({ ...prev, ...parsed }));
-            } catch (e) {
-                console.error("Error parsing keys", e);
-            }
-        } else if (process.env.API_KEY) {
-            setApiKeys(prev => ({ ...prev, gemini: [process.env.API_KEY!] }));
-        }
-
-        if (storedActiveProvider && ['gemini', 'openai', 'grok'].includes(storedActiveProvider)) {
-            setActiveProvider(storedActiveProvider);
-            setModalSelectedProvider(storedActiveProvider);
-        }
         
         if (storedModelName) {
             setModelName(storedModelName);
@@ -534,65 +501,18 @@ const App = () => {
         setInfluencerRefOptions(prev => ({ ...prev, [option]: !prev[option] }));
     };
 
-    const addApiKeys = () => {
-        if (!tempKeyInput.trim()) return;
-        const newKeys = tempKeyInput.split(/[\n,]+/).map(k => k.trim()).filter(k => k.length > 5);
-        if (newKeys.length > 0) {
-            setApiKeys(prev => {
-                const currentProviderKeys = prev[modalSelectedProvider];
-                const uniqueNewKeys = newKeys.filter(k => !currentProviderKeys.includes(k));
-                const newState = { ...prev, [modalSelectedProvider]: [...currentProviderKeys, ...uniqueNewKeys] };
-                localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
-                return newState;
-            });
-            setTempKeyInput('');
-        }
-    };
-
-    const removeApiKey = (provider: Provider, index: number) => {
-        setApiKeys(prev => {
-            const currentProviderKeys = prev[provider];
-            const updatedKeys = currentProviderKeys.filter((_, i) => i !== index);
-            const newState = { ...prev, [provider]: updatedKeys };
-            localStorage.setItem('multi_provider_api_keys', JSON.stringify(newState));
-            if (currentKeyIndices.current[provider] >= updatedKeys.length) currentKeyIndices.current[provider] = 0;
-            return newState;
-        });
-    };
-
-    const handleSetActiveProvider = (provider: Provider) => {
-        setActiveProvider(provider);
-        localStorage.setItem('active_provider', provider);
-    };
-
     const executeWithRotation = async <T,>(operation: (apiKey: string) => Promise<T>): Promise<T> => {
-        const providerKeys = apiKeys[activeProvider];
-        if (activeProvider !== 'gemini') throw new Error(`Nhà cung cấp ${activeProvider.toUpperCase()} chưa được hỗ trợ.`);
-        if (providerKeys.length === 0) {
-            setShowSettings(true);
-            throw new Error(`Vui lòng nhập API Key cho ${activeProvider.toUpperCase()} trong phần Cài đặt.`);
-        }
-        let lastError: any = new Error("Unknown error");
-        const startIndex = currentKeyIndices.current[activeProvider];
-        for (let i = 0; i < providerKeys.length; i++) {
-            const index = (startIndex + i) % providerKeys.length;
-            const key = providerKeys[index];
-            try {
-                const result = await operation(key);
-                currentKeyIndices.current[activeProvider] = index;
-                return result;
-            } catch (err: any) {
-                // Modified error handling to show user specific model errors (like 404 Model not found)
-                if (err.message && (err.message.includes("AI không trả về ảnh") || err.message.includes("Safety"))) {
-                     throw err; 
-                }
-                // If it's a 404 or 400 (Model not found/Bad Request), we might want to let the user know, but rotation tries other keys first.
-                // However, if ALL keys fail, we throw the last error.
-                console.warn(`Key ...${key.slice(-4)} failed:`, err.message);
-                lastError = err;
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) throw new Error("API Key chưa được cấu hình (process.env.API_KEY).");
+        
+        try {
+            return await operation(apiKey);
+        } catch (err: any) {
+             if (err.message && (err.message.includes("AI không trả về ảnh") || err.message.includes("Safety"))) {
+                 throw err; 
             }
+            throw new Error(`Lỗi API: ${err.message}`);
         }
-        throw new Error(`Lỗi API (${lastError.message}). Hãy kiểm tra Key hoặc thử đổi Model Name trong Cài đặt.`);
     };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setFile: (f: File | null) => void, setPreview: (s: string | null) => void) => {
@@ -815,14 +735,26 @@ const App = () => {
         setIsGeneratingVideo(true); 
         // Only reset result if we are NOT upscaling
         if (!overrideModel) setVideoResultUrl(null); 
-        
         setError(null); 
-        setVideoProgress('Đang gửi yêu cầu...');
+        setVideoProgress('Đang kiểm tra API Key...');
         
         try {
-            const providerKeys = apiKeys.gemini;
-            if (providerKeys.length === 0) throw new Error("Vui lòng nhập API Key cho Gemini.");
-            const apiKey = providerKeys[0]; // Veo calls are heavy, stick to one key or user's main key
+            // 1. Veo Key Selection
+            if (window.aistudio) {
+                try {
+                    const hasKey = await window.aistudio.hasSelectedApiKey();
+                    if (!hasKey) {
+                        await window.aistudio.openSelectKey();
+                    }
+                } catch (e) {
+                    console.warn("AI Studio Key selection check failed", e);
+                }
+            }
+
+            // Priority: process.env.API_KEY
+            const apiKey = process.env.API_KEY;
+            if (!apiKey) throw new Error("Vui lòng nhập API Key (Paid Project) để sử dụng tính năng này.");
+
             const ai = new GoogleGenAI({ apiKey: apiKey });
             
             let imagePart = undefined;
@@ -834,7 +766,7 @@ const App = () => {
             const modelToUse = overrideModel || videoModel;
             const resToUse = overrideRes || videoResolution;
 
-            setVideoProgress(`Đang tạo video (${modelToUse.includes('fast') ? 'Fast' : 'Pro'} - ${resToUse})...`);
+            setVideoProgress(`Đang gửi yêu cầu tạo video (${modelToUse.includes('fast') ? 'Fast' : 'Pro'} - ${resToUse})...`);
 
             // Veo Generation Call
             let operation = await ai.models.generateVideos({
@@ -844,21 +776,28 @@ const App = () => {
                 config: {
                     numberOfVideos: 1,
                     resolution: resToUse as '720p' | '1080p',
-                    aspectRatio: generationSettings.aspectRatio
+                    aspectRatio: generationSettings.aspectRatio as '16:9' | '9:16'
                 }
             });
 
-            // Polling Loop
+            setVideoProgress('Đang xử lý (quá trình này có thể mất vài phút)...');
+
+            // Polling Loop - Increased to 10s per guidelines
             while (!operation.done) {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5s
+                await new Promise(resolve => setTimeout(resolve, 10000)); 
                 operation = await ai.operations.getVideosOperation({operation: operation});
-                setVideoProgress('Đang xử lý...');
             }
 
             if (operation.error) throw new Error(operation.error.message || "Video generation failed");
 
-            const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-            if (!downloadLink) throw new Error("Không tìm thấy link video trong kết quả.");
+            // Check both response and result for robustness
+            const videoResponse = operation.response || (operation as any).result;
+            const downloadLink = videoResponse?.generatedVideos?.[0]?.video?.uri;
+
+            if (!downloadLink) {
+                console.error("No download link found in operation:", operation);
+                throw new Error("Không tìm thấy link video trong kết quả (API không trả về URI).");
+            }
 
             // Fetch video blob
             setVideoProgress('Đang tải video về...');
@@ -870,8 +809,17 @@ const App = () => {
             setVideoResultUrl(videoUrl);
 
         } catch (err: any) {
+            console.error("Video generation error:", err);
             let msg = err.message;
-            if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
+            
+            if (msg.includes('Requested entity was not found')) {
+                 if (window.aistudio) {
+                     await window.aistudio.openSelectKey();
+                     msg = "Vui lòng chọn lại API Key và thử lại.";
+                 } else {
+                     msg = "API Key không hợp lệ hoặc đã hết hạn.";
+                 }
+            } else if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
                 msg = `Lỗi 403 (Permission Denied): Model chưa được cấp quyền. Hãy thử chuyển sang model 'Veo Fast' hoặc kiểm tra quyền truy cập.`;
             } else if (msg.includes('Billing')) {
                 msg = "Lỗi Billing: Tính năng Video yêu cầu API Key của dự án có trả phí (Pay-as-you-go).";
@@ -930,7 +878,7 @@ const App = () => {
                 <h1 className="app-title">AI Studio VIP</h1>
                 <p className="app-subtitle">Bộ công cụ xử lý ảnh chuyên nghiệp</p>
                 <div className="header-actions">
-                    <button className="settings-btn" onClick={() => setShowSettings(true)}><span>⚙️</span><span>Cài đặt API</span></button>
+                    <button className="settings-btn" onClick={() => setShowSettings(true)}><span>⚙️</span><span>Cài đặt Model</span></button>
                     <button className="guide-btn" onClick={() => setShowGuide(true)}><span>📖</span><span>Hướng dẫn</span></button>
                 </div>
                 <nav className="main-nav">
@@ -948,15 +896,11 @@ const App = () => {
             {showSettings && (
                  <div className="modal-overlay">
                     <div className="modal-content settings-modal-wide">
-                        <div className="modal-header"><h3>Quản lý API Key</h3><button className="modal-close" onClick={() => setShowSettings(false)}>×</button></div>
+                        <div className="modal-header"><h3>Cài đặt Model AI</h3><button className="modal-close" onClick={() => setShowSettings(false)}>×</button></div>
                         <div className="modal-body">
-                            <div className="modal-sidebar">
-                                <button className={`sidebar-item ${modalSelectedProvider === 'gemini' ? 'active' : ''}`} onClick={() => setModalSelectedProvider('gemini')}><span className="icon">💎</span> Gemini <span className="count-badge">{apiKeys.gemini.length}</span></button>
-                                <div className="active-provider-section"><label>Đang sử dụng:</label><select value={activeProvider} onChange={(e) => handleSetActiveProvider(e.target.value as Provider)} className="provider-select"><option value="gemini">Gemini</option></select></div>
-                            </div>
                             <div className="modal-main">
                                 <div style={{marginBottom: '15px', padding: '10px', background: '#111', borderRadius: '8px', border: '1px solid #333'}}>
-                                    <label className="vip-label" style={{color:'#f59e0b'}}>Cấu hình Model:</label>
+                                    <label className="vip-label" style={{color:'#f59e0b'}}>Cấu hình Model Gemini:</label>
                                     
                                     <div style={{marginBottom:'10px'}}>
                                         <label className="vip-label" style={{fontSize:'0.8rem', color:'#888'}}>Chọn nhanh:</label>
@@ -993,8 +937,6 @@ const App = () => {
                                         *Nếu gặp lỗi "404 Not Found" hoặc "Safety", hãy thử chuyển sang <strong>Gemini 2.5 Flash Image</strong>.
                                     </div>
                                 </div>
-                                <div className="api-input-group"><textarea value={tempKeyInput} onChange={(e) => setTempKeyInput(e.target.value)} placeholder={`Dán danh sách Key ${modalSelectedProvider}...`} className="api-textarea" rows={3}/><button className="btn btn-primary add-key-btn" onClick={addApiKeys}>+ Thêm</button></div>
-                                <div className="key-list-container"><div className="key-list">{apiKeys[modalSelectedProvider].map((k, i) => (<div key={i} className={`key-item ${modalSelectedProvider === activeProvider && i === currentKeyIndices.current[modalSelectedProvider] ? 'key-active' : ''}`}><div className="key-info">...{k.slice(-6)}</div><button className="delete-key-btn" onClick={() => removeApiKey(modalSelectedProvider, i)}>🗑️</button></div>))}</div></div>
                             </div>
                         </div>
                     </div>
